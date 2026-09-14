@@ -17,6 +17,7 @@
 !/scripts/
 !/src/
 !/tests/
+!/examples/
 !/zensical.toml
 !/docs/
 
