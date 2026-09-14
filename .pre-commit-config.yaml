@@ -1,0 +1,70 @@
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # git
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: forbid-submodules
+#     - id: no-commit-to-branch
+#       args: [-b,master]
+      # fs
+      - id: check-case-conflict
+      - id: check-illegal-windows-names
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: check-symlinks
+      - id: destroyed-symlinks
+      - id: name-tests-test
+        args: [--pytest-test-first]
+      # file contents
+      - id: check-json
+      - id: check-toml
+     #- id: check-xml
+      - id: check-yaml
+     #- id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+
+  # Assumes running in "setup" context
+  - repo: local
+    hooks:
+      # https://github.com/astral-sh/uv-pre-commit/blob/main/.pre-commit-hooks.yaml
+      - id: uv-lock
+        name: uv-lock
+        entry: uv lock --check
+        files: ^(uv\.lock|pyproject\.toml)$
+        language: system
+        pass_filenames: false
+      - id: lint
+        name: lint
+        entry: ./run.sh lint
+        language: system
+        pass_filenames: false
+      - id: typecheck
+        name: typecheck
+        entry: ./run.sh typecheck
+        language: system
+        pass_filenames: false
+      - id: format
+        name: format
+        entry: ./run.sh fmt --check
+        language: system
+        pass_filenames: false
+      - id: commit-oneline
+        name: one-line ASCII commit and version provenance
+        entry: scripts/beartype scripts/commit_msg.py
+        language: system
+        stages: [commit-msg]
+        always_run: true
+      - id: release-provenance
+        name: committed release version and tag provenance
+        entry: scripts/beartype scripts/pre_push.py
+        language: system
+        stages: [pre-push]
+        pass_filenames: false
+        always_run: true

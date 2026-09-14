@@ -1,0 +1,8 @@
+/* Material renders h4 at body-copy size by default. Keep h4 out of the TOC,
+   but make section labels visible in the page itself. */
+.md-typeset h4 {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 1.4;
+}

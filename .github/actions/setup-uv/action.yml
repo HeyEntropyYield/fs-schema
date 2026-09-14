@@ -1,0 +1,23 @@
+name: Set up uv
+description: Install the repository-pinned uv version and select Python
+inputs:
+  python-version:
+    description: Optional Python version override
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - id: versions
+      shell: bash
+      run: |
+        IFS= read -r version < .uv-version
+        test -n "$version"
+        test "$(printf '%s\n' "$version" | wc -l)" -eq 1
+        test "$(wc -l < .uv-version)" -eq 1
+        echo "uv=$version" >> "$GITHUB_OUTPUT"
+    - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      with:
+        version: ${{ steps.versions.outputs.uv }}
+        python-version: ${{ inputs.python-version }}
+        enable-cache: true

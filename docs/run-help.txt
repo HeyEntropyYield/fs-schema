@@ -1,0 +1,59 @@
+Dev:
+  ./run.sh setup:install-pre-commit
+  ./run.sh uv:venv:sync
+  ./run.sh pretty / check / tests
+  ./run.sh docs:serve
+
+Maintainer:
+  ./run.sh pkg:bump VERSION
+  ./run.sh release:check
+  ./run.sh release:tag
+  ./run.sh gh:ci [ref]
+  ./run.sh gh:docs [ref]
+  ./run.sh gh:publish:testpypi [ref]
+  ./run.sh gh:publish:pypi
+  ./run.sh release:testpypi
+  ./run.sh release:pypi
+
+Lock: edit pyproject.toml, then ./run.sh uv:lock
+MRE: ./run.sh docker:test
+
+Commands:
+  help                         Usual path + command list
+  pkg:version                  Read or update the package version and lockfile
+  pkg:bump                     Update version and lockfile, then print the required commit subject
+  pkg:build                    Build sdist and wheel into dist/
+ Setup
+  setup:install-pre-commit     Install git hooks (once per clone; sync first)
+  setup:check-installs         Checks all host deps present
+ Dep management
+  uv:venv:sync                 Sync .venv from uv.lock (no resolve)
+  uv:lock                      Write uv.lock. Edit pyproject.toml by hand first (no uv add)
+  uv:lock:bootstrap            Re-create uv.lock from scratch, ignore current pins
+ Dev: checks
+  lint                         ruff check + shellcheck
+  typecheck                    basedpyright
+  check                        pre-commit + docs build
+  tests                        pytest against the installed package (`python -I`: no cwd on sys.path)
+ Dev: formatters
+  fmt                          ruff format
+  pretty                       fmt + ruff check --fix
+ Docs
+  docs:build                   Build the docs site into site/
+  docs:serve                   Serve docs locally
+ CI / maintainer
+  ci:tox                       Local tox matrix (no act). skip_missing_interpreters in tox.
+  release:check                Build, inspect, and clean-install both local artifacts
+  release:tag                  Create the exact annotated vVERSION tag at a clean release HEAD
+  release:testpypi             Run the complete local TestPyPI release with an API token
+  release:pypi                 Run the complete local tagged PyPI release with an API token
+  gh:ci                        Dispatch and watch remote test.yml
+  gh:docs                      Dispatch and watch remote docs.yml
+  gh:publish:testpypi          Dispatch, test, publish, and verify through GitHub OIDC
+  gh:publish:pypi              Dispatch tagged production publish, verify, and create GitHub Release
+ Docker
+  docker:build                 Build image
+  docker:test                  Build prod image + ./run.sh tests. Host at /mnt/app for later export
+  docker:shell                 Dev shell. Host tree at /app, host uid
+  docker:prune                 Dangling image / buildx prune
+  docker:matrix                docker:test for each PYTHON_VERSIONS (local MRE; GHA uses baipp matrix)
