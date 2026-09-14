@@ -31,5 +31,5 @@ rooted write destinations not yet validated.
 - [Quickstart](https://github.com/HeyEntropyYield/fs-schema/blob/master/examples/quickstart.py): Compact declaration, binding, access, output formatting, and writing.
 - [Before fs-schema](https://github.com/HeyEntropyYield/fs-schema/blob/master/examples/data_delivery_before.py): Path-only pipeline with layout contract in prose.
 - [After fs-schema](https://github.com/HeyEntropyYield/fs-schema/blob/master/examples/data_delivery_after.py): Same pipeline with filesystem state types.
-- [Public API source](https://github.com/HeyEntropyYield/fs-schema/blob/master/src/fs_schema/_api_stubs.py): Typed API surface.
+- [Public API source](https://github.com/HeyEntropyYield/fs-schema/blob/master/src/fs_schema/__init__.py): Explicit public API facade.
 - [Repository](https://github.com/HeyEntropyYield/fs-schema): Package source, issues, and development files.

@@ -97,20 +97,27 @@ import sys
 
 from beartype.roar import BeartypeCallHintParamViolation
 
-assert "fs_schema._api_stubs" not in sys.modules
+modules = (
+    "fs_schema._fmt",
+    "fs_schema._ops",
+    "fs_schema._schema",
+    "fs_schema._types",
+)
+assert not any(module in sys.modules for module in modules)
 import fs_schema
 
-assert fs_schema.dt.__module__ == "fs_schema._api_stubs"
+assert all(module in sys.modules for module in modules)
+assert fs_schema.dt.__module__ == "fs_schema._fmt"
 try:
     fs_schema.dt(1)
 except BeartypeCallHintParamViolation:
     pass
 else:
-    raise AssertionError("fs_schema._api_stubs was not instrumented")
+    raise AssertionError("fs_schema._fmt was not instrumented")
 """
 
 
-def test_ordinary_import_installs_package_hook_before_api_stubs() -> None:
+def test_ordinary_import_installs_package_hook_before_api_modules() -> None:
     result = subprocess.run(
         [sys.executable, "-I", "-c", PACKAGE_HOOK_PROBE],
         check=False,
