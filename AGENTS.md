@@ -1,6 +1,6 @@
 # fs-schema
 
-`./run.sh help` is the project API. Sync first: `./run.sh uv:venv:sync`. After that, cmds use `.venv/bin` (no `uv run`).
+`./run.sh help` is the project API. After `./run.sh uv:venv:sync`, cmds use `.venv/bin` (no `uv run`).
 
 ## Commits
 
@@ -8,7 +8,9 @@ One line. No body. ASCII only. No names, task ids, or commit hashes.
 
 ## Layout
 
-`src/fs_schema` is the package. Tests import the installed package (`--import-mode=importlib`). Do not add repo-root or `src/` to `pythonpath`.
+`src/fs_schema` is the installable package. Tests import that install (`--import-mode=importlib`). Do not put `src/` on `pythonpath`.
+
+`examples/` is a pytest `pythonpath` entry (the directory itself, not the repo root).
 
 ## Code
 

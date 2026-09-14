@@ -1,0 +1,35 @@
+# fs-schema
+
+> Python 3.10+ typed schemas for filesystem layouts. Declare a tree, bind and
+> validate an existing directory, or root a tree before writing it.
+
+Import as `import fs_schema as fss`.
+
+Core state model:
+
+- `Schema` subclass: layout declaration and validated bound value.
+- `Schema.bind(path)`: validate existing tree; returns schema or `MismatchErr`.
+- `Schema.relative_to(path)`: planned paths; returns `SchemaRoot[Schema]`.
+- `SchemaRoot.bind()`: validate written tree and return schema.
+- `File`, `Dir`, `FILES`: layout declaration.
+- Attribute/index access: generated, schema-aware traversal.
+- `fmt`, `match`, `min`, `max`, `sort`: repeated-node matching.
+- `Match.args`, `Match.kwargs`, `find`, `filter`: captured-value access.
+- `put`, `load`, `path`: filesystem I/O.
+- Optional mashumaro integration: plain dataclass JSON/YAML/TOML/MessagePack.
+
+`Schema` values are validated filesystem states. `SchemaRoot[T]` values are
+rooted write destinations not yet validated.
+
+## Documentation
+
+- [API reference Markdown](https://raw.githubusercontent.com/HeyEntropyYield/fs-schema/master/docs/reference.md): Declaration, binding, rooted creation, node access, templates, I/O, and errors.
+- [Tutorial Markdown](https://raw.githubusercontent.com/HeyEntropyYield/fs-schema/master/docs/tutorial.md): Data-delivery pipeline before and after filesystem types.
+
+## Code
+
+- [Quickstart](https://github.com/HeyEntropyYield/fs-schema/blob/master/examples/quickstart.py): Compact declaration, binding, access, output formatting, and writing.
+- [Before fs-schema](https://github.com/HeyEntropyYield/fs-schema/blob/master/examples/data_delivery_before.py): Path-only pipeline with layout contract in prose.
+- [After fs-schema](https://github.com/HeyEntropyYield/fs-schema/blob/master/examples/data_delivery_after.py): Same pipeline with filesystem state types.
+- [Public API source](https://github.com/HeyEntropyYield/fs-schema/blob/master/src/fs_schema/_api_stubs.py): Typed API surface.
+- [Repository](https://github.com/HeyEntropyYield/fs-schema): Package source, issues, and development files.

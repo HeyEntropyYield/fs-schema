@@ -31,6 +31,13 @@ dependencies = [
   "typing-extensions>=4.10",
 ]
 
+[project.optional-dependencies]
+mashumaro = ["mashumaro>=3.22"]
+orjson = ["mashumaro[orjson]>=3.22"]
+yaml = ["mashumaro[yaml]>=3.22"]
+toml = ["mashumaro[toml]>=3.22"]
+msgpack = ["mashumaro[msgpack]>=3.22"]
+
 [dependency-groups]
 dev = [
   "basedpyright",
@@ -40,6 +47,7 @@ dev = [
   "coverage",
   "docopt", # docopt2 ? -ng ?
   "httpx>=0.28.1",
+  "mashumaro[orjson]>=3.22",
   "pre-commit",
   "pytest>=9",
   "pytest-check",
@@ -87,23 +95,43 @@ Issues = "https://github.com/HeyEntropyYield/fs-schema/issues"
 [tool.ruff]
 line-length = 120
 target-version = "py310"
-src = ["src", "tests", "scripts"]
-include = ["pyproject.toml", "src/**/*.py", "tests/**/*.py", "scripts/**/*.py"]
+src = ["src", "tests", "examples", "scripts"]
+include = ["pyproject.toml", "src/**/*.py", "tests/**/*.py", "examples/**/*.py", "scripts/**/*.py"]
 
 [tool.ruff.format]
 preview = true
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "RUF"]
+ignore = ["RUF012"]
+per-file-ignores = { "src/fs_schema/__init__.py" = ["E402", "I001"] }
+
 [tool.basedpyright]
 pythonVersion = "3.10"
 pythonPlatform = "All"
 typeCheckingMode = "all"
-include = ["src", "tests", "scripts"]
+include = ["src", "tests", "examples", "scripts"]
 exclude = ["**/__pycache__", "**/.venv", "dist", ".tox"]
 venvPath = "."
 venv = ".venv"
 reportMissingTypeStubs = "none"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "src"
+reportUninitializedInstanceVariable = "none"
+reportUnusedParameter = "none"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "examples"
+extraPaths = ["examples"]
+reportUnannotatedClassAttribute = "none"
+reportUnusedCallResult = "none"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "tests"
+extraPaths = [".", "examples"]
+reportUnannotatedClassAttribute = "none"
+reportUnusedCallResult = "none"
 
 [[tool.basedpyright.executionEnvironments]]
 root = "scripts"
@@ -116,21 +144,15 @@ reportUnknownParameterType = "none"
 reportUnreachable = "none"
 reportUnusedCallResult = "none"
 
-[[tool.basedpyright.executionEnvironments]]
-root = "tests"
-extraPaths = ["."]
-reportUnannotatedClassAttribute = "none"
-reportUnusedCallResult = "none"
-
-
-# Installed package only (editable locally, wheel under tox). No repo-root/src
-# on sys.path - that is what src/ layout exists to prevent.
+# Installed package only (editable locally, wheel under tox). No src/ on
+# sys.path - that is what src/ layout exists to prevent.
+# examples/ (the dir) is on sys.path so import child module works.
 # https://hynek.me/articles/testing-packaging/
 # https://docs.pytest.org/en/latest/explanation/goodpractices.html
 [tool.pytest]
 minversion = "9.0"
 testpaths = ["tests"]
-pythonpath = ["."]
+pythonpath = [".", "examples"]
 addopts = [
   "-v",
   "--import-mode=importlib",
