@@ -20,7 +20,7 @@ from typing_extensions import (
     runtime_checkable,
 )
 
-from ._fmt import CaptureMap, FmtField, FmtLike
+from ._fmt import CaptureMap, FmtField
 from ._ops import MismatchErr
 from ._types import LoadSpec, Located, PathIsh, Puttable
 
@@ -62,11 +62,11 @@ SortFn: TypeAlias = Callable[[Match], SortKey]
 # Declaration specs. Only `name` is positional. `name` and `fmt`/`match` are
 # exclusive. `match` is re.fullmatch over basename. `max` defaults to 1 when
 # named, else unbounded.
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class Node:
     name: str = ""
     _: KW_ONLY
-    fmt: FmtLike | None = None
+    fmt: str | None = None
     match: str | None = None
     min: int = 1
     max: int | None = None
@@ -74,13 +74,24 @@ class Node:
     sort: SortFn | None = None
     sort_rev: bool = False
 
+    def __post_init__(self) -> None:
+        if self.name and (self.fmt is not None or self.match is not None):
+            raise ValueError("name cannot be combined with fmt or match")
+        maximum = 1 if self.name and self.max is None else self.max
+        if self.min < 0:
+            raise ValueError("min must be at least zero")
+        if maximum is not None and maximum < self.min:
+            raise ValueError("max must be at least min")
+        if self.name and self.max is None:
+            object.__setattr__(self, "max", maximum)
 
-@dataclass(frozen=True, kw_only=True)
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class File(Node, Generic[_L_co]):
     schema: LoadSpec[_L_co] | None = None
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class Dir(Node, Generic[_D_co]):
     # Optional extra layout contract for whatever appears on this Dir's RHS.
     schema: type[_D_co] | None = None
@@ -93,14 +104,6 @@ class FilesKey:
     @override
     def __repr__(self) -> str:
         return "FILES"
-
-    @override
-    def __hash__(self) -> int:
-        return hash("FILES")
-
-    @override
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, FilesKey)
 
 
 FILES: Final = FilesKey()
