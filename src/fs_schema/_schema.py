@@ -1,110 +1,42 @@
 import os
-from collections.abc import Callable, Iterator, Mapping, Sequence
-from dataclasses import KW_ONLY, Field, dataclass
+from collections.abc import Callable, Sequence
+from dataclasses import KW_ONLY, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import ClassVar, Final, Generic, TypeAlias, TypeVar, final, overload
+from typing import (
+    ClassVar,
+    Final,
+    Generic,
+    TypeAlias,
+    TypeVar,
+    final,
+    overload,
+)
 
-from typing_extensions import Protocol, Self, TypeIs, override, runtime_checkable
+from typing_extensions import (
+    Protocol,
+    Self,
+    override,
+    runtime_checkable,
+)
 
-_T = TypeVar("_T")
+from ._fmt import CaptureMap, FmtField, FmtLike
+from ._ops import MismatchErr
+from ._types import LoadSpec, Located, PathIsh, Puttable
+
+# The concrete Schema subtype is preserved by root and bind operations.
 _S = TypeVar("_S", bound="Schema")
+# Directory declarations only produce their Schema subtype.
 _D_co = TypeVar("_D_co", bound="Schema", covariant=True)
-_L = TypeVar("_L")
 # File declarations only produce _L_co through their load specification; no
 # declaration API consumes it, so the parameter is safely covariant. This says
 # nothing about mutability of the loaded value.
 _L_co = TypeVar("_L_co", covariant=True)
+# Template collections only produce their concrete Match subtype.
 _M_co = TypeVar("_M_co", bound="Match", covariant=True)
 
-# Two classes of alias here, and mixing them up silently disables beartype.
-# Anything reachable from a runtime-checked signature is built from real
-# objects, which is what drives the definition order in this file. Aliases
-# that are recursive cannot be, and are static-only.
-PathIsh: TypeAlias = str | os.PathLike[str]
 
-
-def exists_opt(path: PathIsh) -> Path | None:
-    raise NotImplementedError
-
-
-# Static-only. beartype cannot resolve a forward reference that names an alias
-# rather than a class, so never annotate a checked signature with these.
-Json: TypeAlias = dict[str, "Json"] | list["Json"] | str | int | float | bool | None
-JsonRo: TypeAlias = Mapping[str, "JsonRo"] | Sequence["JsonRo"] | str | int | float | bool | None
-JsonObj: TypeAlias = dict[str, Json]
-
-# TODO: namefmt.Fmt (parse + format). A str pattern is the handle today.
-FmtLike: TypeAlias = str
-
-
-def dt(pattern: str) -> FmtLike:
-    return f"{{:{pattern}}}"
-
-
-class MismatchErr(Exception):
-    pass
-
-
-def is_mismatch(x: object) -> TypeIs[MismatchErr]:
-    raise NotImplementedError
-
-
-def raise_mismatch(x: _T | MismatchErr) -> _T:
-    raise NotImplementedError
-
-
-# beartype checks Protocol params via isinstance. Bare Protocol is static-only.
-@runtime_checkable
-class HasSave(Protocol):
-    def save(self, path: Path) -> None: ...
-
-
-@runtime_checkable
-class DataclassInstance(Protocol):
-    __dataclass_fields__: ClassVar["dict[str, Field[object]]"]
-
-
-FileBody: TypeAlias = bytes | str | Path
-Puttable: TypeAlias = FileBody | HasSave | DataclassInstance
-
-# A class is resolved through the target file's format codec. With the
-# mashumaro extra, plain dataclasses work without mixins. A callable is an
-# explicit path loader.
-LoadSpec: TypeAlias = type[_L] | Callable[[Path], _L]
-
-
-# Public structural vocabulary for one path. Concrete fs-schema values add
-# convenience methods such as exists() and path ordering through _Fixed.
-@runtime_checkable
-class Located(Protocol):
-    @property
-    def path(self) -> Path: ...
-
-    def __fspath__(self) -> str: ...
-
-
-## Runtime template collection matches
-
-# A parsed template field: {n:d} -> int, {stem} -> str, dt() -> datetime.
-FmtField: TypeAlias = str | int | datetime
-
-
-class CaptureMap(Mapping[str, FmtField]):
-    @override
-    def __getitem__(self, key: str) -> FmtField:
-        raise NotImplementedError
-
-    @override
-    def __iter__(self) -> Iterator[str]:
-        raise NotImplementedError
-
-    @override
-    def __len__(self) -> int:
-        raise NotImplementedError
-
-    def __getattr__(self, name: str) -> FmtField:
-        raise NotImplementedError
+## Forward-safe cycle vocabulary
 
 
 @runtime_checkable
@@ -124,7 +56,7 @@ SortKey: TypeAlias = str | int | float | datetime | Located
 SortFn: TypeAlias = Callable[[Match], SortKey]
 
 
-## User schema file/dir defs
+## User schema file/dir declarations
 
 
 # Declaration specs. Only `name` is positional. `name` and `fmt`/`match` are
@@ -154,7 +86,48 @@ class Dir(Node, Generic[_D_co]):
     schema: type[_D_co] | None = None
 
 
-## Runtime access
+@final
+class FilesKey:
+    __slots__ = ()
+
+    @override
+    def __repr__(self) -> str:
+        return "FILES"
+
+    @override
+    def __hash__(self) -> int:
+        return hash("FILES")
+
+    @override
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, FilesKey)
+
+
+FILES: Final = FilesKey()
+
+# Three kinds of mapping, and a dict cannot say that a key's type constrains
+# its value's type:
+#
+#   Dir | str naming a dir  ->  DirRhs
+#   FILES                   ->  FilesRhs
+#   str aliasing a file     ->  FileRhs
+#
+# `Layout` is the loosest honest type, so it still rejects anything outside
+# the unions. `LayoutEntry` is the truth, and is what the reifier matches on,
+# which is where the remaining pairings are enforced. Recursive, so this whole
+# family is static-only -- fine, since only ClassVar[Layout] ever uses it.
+DirRhs: TypeAlias = "Layout | type[Schema]"
+FileRhs: TypeAlias = str | File[object]
+FilesRhs: TypeAlias = list[FileRhs]
+
+LayoutKey: TypeAlias = "str | Dir[Schema] | FilesKey"
+LayoutValue: TypeAlias = "DirRhs | FileRhs | FilesRhs"
+Layout: TypeAlias = dict[LayoutKey, LayoutValue]
+
+LayoutEntry: TypeAlias = "tuple[Dir[Schema] | str, DirRhs] | tuple[FilesKey, FilesRhs] | tuple[str, FileRhs]"
+
+
+## Runtime fixed files and directories
 
 
 class _Fixed:
@@ -214,6 +187,9 @@ class _FixedDir(_Fixed):
 
     def __getitem__(self, key: str | int) -> "Child":
         raise NotImplementedError
+
+
+## Runtime template matches and collections
 
 
 class _MatchBase:
@@ -282,47 +258,6 @@ Child: TypeAlias = (
 ## Schemas
 
 
-@final
-class FilesKey:
-    __slots__ = ()
-
-    @override
-    def __repr__(self) -> str:
-        return "FILES"
-
-    @override
-    def __hash__(self) -> int:
-        return hash("FILES")
-
-    @override
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, FilesKey)
-
-
-FILES: Final = FilesKey()
-
-# Three kinds of mapping, and a dict cannot say that a key's type constrains
-# its value's type:
-#
-#   Dir | str naming a dir  ->  DirRhs
-#   FILES                   ->  FilesRhs
-#   str aliasing a file     ->  FileRhs
-#
-# `Layout` is the loosest honest type, so it still rejects anything outside
-# the unions. `LayoutEntry` is the truth, and is what the reifier matches on,
-# which is where the remaining pairings are enforced. Recursive, so this whole
-# family is static-only -- fine, since only ClassVar[Layout] ever uses it.
-DirRhs: TypeAlias = "Layout | type[Schema]"
-FileRhs: TypeAlias = str | File[object]
-FilesRhs: TypeAlias = list[FileRhs]
-
-LayoutKey: TypeAlias = "str | Dir[Schema] | FilesKey"
-LayoutValue: TypeAlias = "DirRhs | FileRhs | FilesRhs"
-Layout: TypeAlias = dict[LayoutKey, LayoutValue]
-
-LayoutEntry: TypeAlias = "tuple[Dir[Schema] | str, DirRhs] | tuple[FilesKey, FilesRhs] | tuple[str, FileRhs]"
-
-
 # Class-level surface. A metaclass because __getattr__ on a parent serves
 # instances, so `MySchema.dir` would not resolve. __new__ reifies `schema`
 # once, caching a child class per node in declaration order.
@@ -364,15 +299,3 @@ class Schema(_FixedDir, metaclass=SchemaCls):
 
     def root(self) -> "SchemaRoot[Self]":
         raise NotImplementedError
-
-
-## Codecs, put, load
-
-
-def put(path: PathIsh, data: Puttable) -> None:
-    # Creates missing parent directories.
-    raise NotImplementedError
-
-
-def load(path: PathIsh, decoder: Callable[[Path], _L]) -> _L | Exception:
-    raise NotImplementedError
