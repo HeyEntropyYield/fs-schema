@@ -1,0 +1,194 @@
+[project]
+name = "fs-schema"
+version = "0.4.1rc1"
+requires-python = ">=3.10"
+
+description = "Python typed schema for filesystem layouts"
+readme = "README.md"
+authors = [{ name = "HeyEntropyYield" }]
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["filesystem", "schema", "pathlib", "typed", "layout"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Typing :: Typed",
+]
+
+dependencies = [
+  "beartype>=0.23.0rc1",
+  "glom",
+  "parse",
+  "typing-extensions>=4.10",
+]
+
+[dependency-groups]
+dev = [
+  "basedpyright",
+  "beartype",
+  "check-wheel-contents",
+  "covdefaults",
+  "coverage",
+  "docopt", # docopt2 ? -ng ?
+  "httpx>=0.28.1",
+  "pre-commit",
+  "pytest>=9",
+  "pytest-check",
+  "pytest-cov",
+  "pytest-fast-first",
+  "pytest-params",
+  "pytest-skip-slow",
+  "pytest-sugar",
+  "ruff",
+  "sh>=2",
+  "syrupy",
+  "tomli",
+  "tomli_w",
+  "tox",
+  "tox-uv",
+  "twine",
+  "zensical>=0.0.59",
+]
+
+[tool.uv]
+required-version = ">=0.11.15,<0.13"
+default-groups = ["dev"]
+cache-keys = [{ file = "pyproject.toml" }, { git = { commit = true, tags = true } }]
+
+[tool.uv.build-backend]
+source-include = ["tests/**", "docs/**", "zensical.toml"]
+
+[[tool.uv.index]]
+name = "testpypi"
+url = "https://test.pypi.org/simple/"
+publish-url = "https://test.pypi.org/legacy/"
+explicit = true
+
+[build-system]
+requires = ["uv_build>=0.11.15,<0.13"]
+build-backend = "uv_build"
+
+[project.urls]
+Homepage = "https://github.com/HeyEntropyYield/fs-schema"
+Repository = "https://github.com/HeyEntropyYield/fs-schema"
+Issues = "https://github.com/HeyEntropyYield/fs-schema/issues"
+
+# Site config lives in zensical.toml - zensical does not read [tool.*] here.
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+src = ["src", "tests", "scripts"]
+include = ["pyproject.toml", "src/**/*.py", "tests/**/*.py", "scripts/**/*.py"]
+
+[tool.ruff.format]
+preview = true
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "RUF"]
+[tool.basedpyright]
+pythonVersion = "3.10"
+pythonPlatform = "All"
+typeCheckingMode = "all"
+include = ["src", "tests", "scripts"]
+exclude = ["**/__pycache__", "**/.venv", "dist", ".tox"]
+reportMissingTypeStubs = "none"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "scripts"
+reportAny = "none"
+reportUnnecessaryIsInstance = "none"
+reportUnknownMemberType = "none"
+reportUnknownVariableType = "none"
+reportUnknownArgumentType = "none"
+reportUnknownParameterType = "none"
+reportUnreachable = "none"
+reportUnusedCallResult = "none"
+
+[[tool.basedpyright.executionEnvironments]]
+root = "tests"
+extraPaths = ["."]
+reportUnannotatedClassAttribute = "none"
+reportUnusedCallResult = "none"
+
+
+# Installed package only (editable locally, wheel under tox). No repo-root/src
+# on sys.path - that is what src/ layout exists to prevent.
+# https://hynek.me/articles/testing-packaging/
+# https://docs.pytest.org/en/latest/explanation/goodpractices.html
+[tool.pytest]
+minversion = "9.0"
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = [
+  "-v",
+  "--import-mode=importlib",
+  "--cov=fs_schema",
+  "--cov=tests",
+  "--cov=scripts",
+  "--no-cov-on-fail",
+  "--cov-report=term-missing",
+  "--cov-fail-under=0",
+]
+strict = true
+
+[tool.coverage.run]
+parallel = true
+source = ["fs_schema", "tests", "scripts"]
+plugins = ["covdefaults"]
+
+[tool.coverage.paths]
+source = ["src/", "*/site-packages/"]
+
+[tool.coverage.report]
+# covdefaults wants 100; engine not there yet.
+fail_under = 0
+skip_covered = true
+
+# env_list fallback; GHA matrix comes from package classifiers (baipp).
+# Coverage measured on oldest + newest only (Hynek: not every interpreter).
+[tool.tox]
+requires = ["tox>=4.34", "tox-uv>=1.23"]
+env_list = ["3.10", "3.11", "3.12", "3.13", "3.14"]
+skip_missing_interpreters = true
+
+[tool.tox.env_run_base]
+description = "pytest against the built wheel, not the checkout"
+runner = "uv-venv-lock-runner"
+package = "wheel"
+dependency_groups = ["dev"]
+set_env = { COVERAGE_FILE = "{tox_root}{/}.coverage.{env_name}" }
+commands = [
+  ["python", "-I", "-m", "pytest", "--no-cov", { replace = "posargs", default = ["tests"], extend = true }],
+]
+
+[tool.tox.env."3.10"]
+description = "pytest + coverage (oldest)"
+commands = [
+  ["python", "-I", "-m", "pytest", { replace = "posargs", default = ["tests"], extend = true }],
+]
+
+[tool.tox.env."3.14"]
+description = "pytest + coverage (newest)"
+commands = [
+  ["python", "-I", "-m", "pytest", { replace = "posargs", default = ["tests"], extend = true }],
+]
+
+[tool.tox.env.pkg]
+description = "sdist/wheel metadata (local; GHA uses baipp)"
+runner = "uv-venv-lock-runner"
+skip_install = true
+dependency_groups = ["dev"]
+commands = [
+  ["uv", "build", "--no-sources", "--out-dir", "{env_tmp_dir}"],
+  ["twine", "check", "{env_tmp_dir}{/}*"],
+]

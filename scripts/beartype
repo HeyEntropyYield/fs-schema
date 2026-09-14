@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+_err(){ echo "$1" >&2; return 1; }
+
+_find_project_root(){
+  local search_dir="$1"
+  while [ "$search_dir" != / ] && [ ! -f "$search_dir/pyproject.toml" ]; do
+    search_dir=$(dirname "$search_dir")
+  done
+  [ -f "$search_dir/pyproject.toml" ] || _err "beartype launcher: no pyproject.toml found" || return $?
+  printf '%s\n' "$search_dir"
+}
+
+_venv_bin(){
+  if [ -n "${UV_PROJECT_ENVIRONMENT:-}" ]; then
+    printf '%s\n' "$UV_PROJECT_ENVIRONMENT/bin"
+  else
+    printf '%s\n' "$1/.venv/bin"
+  fi
+}
+
+_relative_path(){
+  case "$2" in
+    "$1/"*) printf '%s\n' "${2#"$1"/}" ;;
+    *) _err "beartype launcher: script not under project root" || return 1 ;;
+  esac
+}
+
+_modulize_path(){ printf '%s' "$1" | sed 's#\.py$##; s#/#.#g'; }
+
+main(){(
+  [ "$#" -ne 0 ] || _err "usage: scripts/beartype SCRIPT [ARG ...]" || return $?
+  local script root relative module venv_bin
+  script="$(readlink -f "$1")" || return $?
+  root="$(_find_project_root "$(dirname "$script")")" || return $?
+  relative="$(_relative_path "$root" "$script")" || return $?
+  module="$(_modulize_path "$relative")" || return $?
+  venv_bin="$(_venv_bin "$root")"
+  [ -x "$venv_bin/python" ] || _err "beartype launcher: no venv python at $venv_bin" || return $?
+  export PATH="$venv_bin:$PATH"
+  cd "$root"
+  exec python -c '
+import importlib
+import sys
+
+module = importlib.import_module(sys.argv[1])
+raise SystemExit(module.main(sys.argv[3:]))
+' "$module" "$@"
+)}
+
+main "$@"

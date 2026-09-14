@@ -1,0 +1,16 @@
+*
+!README.md
+!LICENSE
+!pyproject.toml
+!uv.lock
+!.pre-commit-config.yaml
+!.python-version
+!versions
+!versions/**
+!run.sh
+!scripts
+!scripts/**
+!src
+!src/**
+!tests
+!tests/**

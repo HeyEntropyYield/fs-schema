@@ -1,0 +1,42 @@
+# zensical does not read pyproject.toml (only this file or mkdocs.yml).
+[project]
+site_name = "fs-schema"
+site_url = "https://heyentropyyield.github.io/fs-schema/"
+site_description = "Python typed schema for filesystem layouts"
+repo_url = "https://github.com/HeyEntropyYield/fs-schema"
+repo_name = "HeyEntropyYield/fs-schema"
+edit_uri = "edit/master/docs/"
+extra_css = ["stylesheets/extra.css"]
+
+nav = [
+  { Home = "index.md" },
+]
+
+[project.markdown_extensions.toc]
+toc_depth = 3
+
+[project.markdown_extensions.pymdownx.snippets]
+base_path = ["."]
+check_paths = true
+
+[project.markdown_extensions.pymdownx.highlight]
+anchor_linenums = true
+line_spans = "__span"
+pygments_lang_class = true
+
+[project.markdown_extensions.pymdownx.inlinehilite]
+
+[project.markdown_extensions.pymdownx.superfences]
+
+[project.markdown_extensions.pymdownx.tabbed]
+alternate_style = true
+combine_header_slug = true
+
+[project.theme]
+language = "en"
+features = [
+  "navigation.footer",
+  "navigation.indexes",
+  "navigation.top",
+  "search.highlight",
+]

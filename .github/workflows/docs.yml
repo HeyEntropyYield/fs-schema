@@ -1,0 +1,46 @@
+name: docs
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  runner:
+    uses: ./.github/workflows/runner.yml
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    needs: runner
+    runs-on: ${{ needs.runner.outputs.runs-on }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: ./.github/actions/setup-uv
+      - if: github.event_name == 'push'
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: ./run.sh uv:venv:sync @@ release:_check-range "$BEFORE" "$GITHUB_SHA" @@ docs:build
+      - if: github.event_name != 'push'
+        run: ./run.sh uv:venv:sync @@ release:_check-ref @@ docs:build
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

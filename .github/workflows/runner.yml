@@ -1,0 +1,23 @@
+# Bootstrap label from versions/ubuntu. GHA cannot read that file at workflow parse time.
+name: runner
+
+on:
+  workflow_call:
+    outputs:
+      runs-on:
+        description: GitHub-hosted runner label (ubuntu-<versions/ubuntu>)
+        value: ${{ jobs.pin.outputs.runs-on }}
+
+permissions:
+  contents: read
+
+jobs:
+  pin:
+    name: Pin runner
+    runs-on: ubuntu-latest
+    outputs:
+      runs-on: ${{ steps.pin.outputs.runs-on }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: pin
+        run: echo "runs-on=ubuntu-$(tr -d '[:space:]' < versions/ubuntu)" >> "$GITHUB_OUTPUT"
