@@ -67,25 +67,25 @@ class Delivery(fss.Schema):
 | `FILES: ["file.ext", File(...)]` | Files in the current directory |
 
 Only `name` is positional in `File` and `Dir`. All other options are
-keyword-only.
+keyword-only. Every declaration requires `name`, `fmt`, or `match`.
 
 ### Templates, matching, and cardinality
 
 | Option | Meaning |
 | --- | --- |
-| `name` | Exact basename. It cannot be combined with `fmt` or `match`. |
-| `fmt` | Full-basename parse and format template. |
-| `match` | Regular expression applied to the full basename with `re.fullmatch`. |
+| `name` | Exact basename. It cannot be combined with `fmt`. |
+| `fmt` | Full-basename parse and format template, validated when declared. |
+| `match` | Regex selector on full basename with `re.fullmatch`, compiled when declared. |
 | `min` | Minimum count; defaults to `1`. Use `0` for an optional declaration. |
-| `max` | Maximum count. Exact names default to one; templates are unbounded. |
+| `max` | Maximum count. Exact names require `min=max=1`; templates are unbounded. |
 | `alias` | Name used for child access in Python. |
 | `sort` | Key function for template matches. |
 | `sort_rev` | Reverse the match order when true. |
 | `schema` | Loader for a file, or an extra schema contract for a directory. |
 
-When `fmt` and `match` are both set, an existing basename must satisfy both.
-Untyped format fields produce `str`, `:d` fields produce `int`, and datetime
-format fields produce `datetime`.
+With `name`, `match` validates the exact basename. With `fmt`, it adds a filter without changing format captures. Used alone, `match` exposes unnamed groups in `args` and named groups in `kwargs`. Optional groups produce `None`.
+
+Untyped format fields produce `str`, `:d` fields produce `int`, and datetime format fields produce `datetime`.
 
 ```python
 part_decl = fss.File(
@@ -242,8 +242,8 @@ for day in days:
 ```
 
 `args` contains unnamed captures. `kwargs` supports mapping and attribute
-access for named captures. Use mapping lookup for names such as `"items"` that
-collide with mapping methods.
+access for named captures. Optional regex captures can be `None`. Use mapping
+lookup for names such as `"items"` that collide with mapping methods.
 
 | Collection operation | Result |
 | --- | --- |
@@ -251,7 +251,7 @@ collide with mapping methods.
 | `collection[slice]` | Another collection |
 | `filter(predicate)` | Lazy matching iterator, in collection order |
 | `find(predicate)` | The first matching item, or `None` |
-| `format(*args, **kwargs)` | A planned `SchemaRoot[Schema]` |
+| `format(*args, **kwargs)` | A planned `SchemaRoot[Schema]` (format-backed templates only) |
 
 ```python
 def is_selected_day(args, kwargs):
@@ -261,13 +261,10 @@ selected_days = days.filter(is_selected_day)
 selected_day = days.find(is_selected_day)
 ```
 
-Formatting a collection or a concrete match plans a path without I/O. Its
-return type is `SchemaRoot[Schema]`: it neither preserves the generated child
-type nor claims that the path exists.
+Formatting a format-backed collection plans a path without I/O. Regex-only collections and individual matches are not formattable.
 
 ```python
 planned_day = days.format(day=datetime(2026, 9, 11))
-replanned_day = latest_day.format(day=datetime(2026, 9, 11))
 ```
 
 ### Public path and match protocols
@@ -282,14 +279,9 @@ class Located(Protocol):
 @runtime_checkable
 class Match(Located, Protocol):
     @property
-    def args(self) -> tuple[str | int | datetime, ...]: ...
+    def args(self) -> tuple[str | int | datetime | None, ...]: ...
     @property
-    def kwargs(self) -> Mapping[str, str | int | datetime]: ...
-    def format(
-        self,
-        *args: str | int | datetime,
-        **kwargs: str | int | datetime,
-    ) -> SchemaRoot[Schema]: ...
+    def kwargs(self) -> Mapping[str, str | int | datetime | None]: ...
 ```
 
 The concrete `kwargs` mapping also supports capture access by attribute, as

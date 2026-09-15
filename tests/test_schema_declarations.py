@@ -1,4 +1,6 @@
 # pyright: reportPrivateUsage=false
+import re
+
 import pytest
 from beartype.roar import BeartypeCallHintParamViolation
 
@@ -9,20 +11,25 @@ from fs_schema import _fmt, _schema
 def test_declarations_are_frozen_slotted_values_with_contextual_defaults() -> None:
     fixed: _schema.File[object] = _schema.File("value.txt")
     assert fixed.name == "value.txt"
-    assert fixed.min == 1
-    assert fixed.max == 1
-    assert _schema.Dir("values", min=0).max == 1
-    assert _schema.File("many.txt", max=3).max == 3
+    assert fixed.min == fixed.max == 1
+    assert _schema.Dir("values").max == 1
+    assert _schema.File(fmt="many-{n}.txt", max=3).max == 3
     pattern: _fmt.FmtLike = _fmt.dt("%Y%m%d")
     templated: _schema.File[object] = _schema.File(fmt=pattern)
     assert templated.fmt == pattern
     assert templated.max is None
     assert _schema.File(match=r"part-[0-9]+[.]txt").max is None
-    assert _schema.File().max is None
     assert _schema.File(fmt="{value}", match=r".+") == _schema.File(fmt="{value}", match=r".+")
     assert not hasattr(fixed, "__dict__")
     equal: _schema.File[object] = _schema.File("value.txt")
     assert hash(fixed) == hash(equal)
+
+
+def test_name_and_match_are_valid_while_name_and_fmt_are_not() -> None:
+    node: _schema.File[object] = _schema.File(name="value.txt", match=r"value[.]txt")
+    assert node.name == "value.txt"
+    assert node.match == r"value[.]txt"
+    assert _schema.File(fmt="{value}", match=r".+").match == r".+"
 
 
 def test_files_is_the_single_identity_token() -> None:
@@ -33,15 +40,19 @@ def test_files_is_the_single_identity_token() -> None:
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [
+        ({}, "declaration requires name, fmt, or match"),
+        ({"fmt": "{unclosed"}, "expected .}."),
+        ({"match": "("}, "unterminated subpattern"),
         ({"name": "value", "fmt": "{value}"}, "name cannot be combined"),
-        ({"name": "value", "match": ".+"}, "name cannot be combined"),
-        ({"min": -1}, "min must be at least zero"),
-        ({"min": 2, "max": 1}, "max must be at least min"),
+        ({"name": "value", "min": -1}, "min must be at least zero"),
+        ({"fmt": "{value}", "min": 2, "max": 1}, "max must be at least min"),
+        ({"name": "value", "min": 0}, "exact-name declarations require min=max=1"),
+        ({"name": "value", "max": 2}, "exact-name declarations require min=max=1"),
         ({"name": "value", "min": 2}, "max must be at least min"),
     ],
 )
 def test_declaration_semantic_failures(kwargs: dict[str, object], message: str) -> None:
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises(re.error if kwargs.get("match") == "(" else ValueError, match=message):
         _schema.File(**kwargs)  # pyright: ignore[reportArgumentType]
 
 
