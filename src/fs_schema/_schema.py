@@ -1,5 +1,5 @@
 import os
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import KW_ONLY, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -20,8 +20,8 @@ from typing_extensions import (
     runtime_checkable,
 )
 
-from ._fmt import CaptureMap, FmtField
-from ._ops import MismatchErr
+from ._fmt import CaptureMap, FmtField, FmtLike
+from ._ops import MismatchErr, put
 from ._types import LoadSpec, Located, PathIsh, Puttable
 
 # The concrete Schema subtype is preserved by root and bind operations.
@@ -66,7 +66,7 @@ SortFn: TypeAlias = Callable[[Match], SortKey]
 class Node:
     name: str = ""
     _: KW_ONLY
-    fmt: str | None = None
+    fmt: FmtLike | None = None
     match: str | None = None
     min: int = 1
     max: int | None = None
@@ -136,9 +136,14 @@ LayoutEntry: TypeAlias = "tuple[Dir[Schema] | str, DirRhs] | tuple[FilesKey, Fil
 class _Fixed:
     # Structural Located implementation: nominal Protocol inheritance would give
     # Schema(_FixedDir, metaclass=SchemaCls) an incompatible metaclass.
+    _path: Path
+
+    def __init__(self, path: PathIsh) -> None:
+        self._path = Path(path)
+
     @property
     def path(self) -> Path:
-        raise NotImplementedError
+        return self._path
 
     @property
     def _defn(self) -> Node:
@@ -147,12 +152,28 @@ class _Fixed:
     def __fspath__(self) -> str:
         return os.fspath(self.path)
 
+    @override
+    def __str__(self) -> str:
+        return str(self.path)
+
     def __lt__(self, other: object) -> bool:
         # runtime_checkable protocols only test member presence, not types.
         path = getattr(other, "path", None)
         if not isinstance(path, Path):
             return NotImplemented
         return self.path < path
+
+    @property
+    def name(self) -> str:
+        return self.path.name
+
+    @property
+    def stem(self) -> str:
+        return self.path.stem
+
+    @property
+    def suffix(self) -> str:
+        return self.path.suffix
 
     def exists(self) -> bool:
         return self.path.exists()
@@ -165,13 +186,13 @@ class _FixedFile(_Fixed):
         raise NotImplementedError
 
     def read_bytes(self) -> bytes:
-        raise NotImplementedError
+        return self.path.read_bytes()
 
     def read_text(self) -> str:
-        raise NotImplementedError
+        return self.path.read_text()
 
     def put(self, data: Puttable) -> None:
-        raise NotImplementedError
+        put(self.path, data)
 
 
 class _LoadableFile(_FixedFile, Generic[_L_co]):
@@ -195,17 +216,28 @@ class _FixedDir(_Fixed):
 ## Runtime template matches and collections
 
 
+CapturePredicate: TypeAlias = Callable[[tuple[FmtField, ...], CaptureMap], bool]
+
+
 class _MatchBase:
+    _args: tuple[FmtField, ...]
+    _kwargs: CaptureMap
+
     @property
     def args(self) -> tuple[FmtField, ...]:
-        raise NotImplementedError
+        return self._args
 
     @property
     def kwargs(self) -> CaptureMap:
-        raise NotImplementedError
+        return self._kwargs
 
 
 class _FileMatch(_MatchBase, _FixedFile):
+    def __init__(self, path: PathIsh, args: tuple[FmtField, ...], kwargs: CaptureMap) -> None:
+        _FixedFile.__init__(self, path)
+        self._args: tuple[FmtField, ...] = tuple(args)
+        self._kwargs: CaptureMap = CaptureMap(kwargs)
+
     def format(self, *args: FmtField, **kwargs: FmtField) -> "SchemaRoot[Schema]":
         raise NotImplementedError
 
@@ -222,27 +254,35 @@ class _DirMatch(_MatchBase, _FixedDir):
 
 
 class _TemplateCollection(Sequence[_M_co], Generic[_M_co]):
+    # The parent is context, while this tuple is the complete observed result.
     path: Path
+    _matches: tuple[_M_co, ...]
+
+    def __init__(self, path: PathIsh, matches: Sequence[_M_co]) -> None:
+        self.path = Path(path)
+        self._matches = tuple(matches)
 
     @overload
     def __getitem__(self, index: int) -> _M_co: ...
 
     @overload
-    def __getitem__(self, index: slice) -> Self: ...
+    def __getitem__(self, index: slice) -> "_TemplateCollection[_M_co]": ...
 
     @override
-    def __getitem__(self, index: int | slice) -> _M_co | Self:
-        raise NotImplementedError
+    def __getitem__(self, index: int | slice) -> "_M_co | _TemplateCollection[_M_co]":
+        if isinstance(index, slice):
+            return _TemplateCollection(self.path, self._matches[index])
+        return self._matches[index]
 
     @override
     def __len__(self) -> int:
-        raise NotImplementedError
+        return len(self._matches)
 
-    def filter(self, *args: FmtField, **kwargs: FmtField) -> tuple[_M_co, ...]:
-        raise NotImplementedError
+    def filter(self, predicate: CapturePredicate) -> Iterator[_M_co]:
+        return (match for match in self._matches if predicate(match.args, match.kwargs))
 
-    def find(self, *args: FmtField, **kwargs: FmtField) -> _M_co | MismatchErr:
-        raise NotImplementedError
+    def find(self, predicate: CapturePredicate) -> _M_co | None:
+        return next(self.filter(predicate), None)
 
     def format(self, *args: FmtField, **kwargs: FmtField) -> "SchemaRoot[Schema]":
         raise NotImplementedError

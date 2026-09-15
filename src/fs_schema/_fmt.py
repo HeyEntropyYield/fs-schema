@@ -11,6 +11,7 @@ from beartype.typing import Protocol
 from parse import Parser
 from typing_extensions import override
 
+FmtLike: TypeAlias = str
 # A parsed template field: {n:d} -> int, {stem} -> str, dt() -> datetime.
 FmtField: TypeAlias = str | int | datetime
 _FORMATTER = Formatter()
@@ -155,5 +156,5 @@ def _compile_field(name: str, spec: str, index: int) -> FormatField:
     return replace(_field_template(spec).value, name=name, index=index, pattern=spec)
 
 
-def dt(pattern: str) -> str:
+def dt(pattern: str) -> FmtLike:
     return f"{{:{pattern}}}"

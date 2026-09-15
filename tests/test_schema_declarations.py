@@ -3,7 +3,7 @@ import pytest
 from beartype.roar import BeartypeCallHintParamViolation
 
 import fs_schema
-from fs_schema import _schema
+from fs_schema import _fmt, _schema
 
 
 def test_declarations_are_frozen_slotted_values_with_contextual_defaults() -> None:
@@ -13,7 +13,10 @@ def test_declarations_are_frozen_slotted_values_with_contextual_defaults() -> No
     assert fixed.max == 1
     assert _schema.Dir("values", min=0).max == 1
     assert _schema.File("many.txt", max=3).max == 3
-    assert _schema.File(fmt="part-{part:d}.txt").max is None
+    pattern: _fmt.FmtLike = _fmt.dt("%Y%m%d")
+    templated: _schema.File[object] = _schema.File(fmt=pattern)
+    assert templated.fmt == pattern
+    assert templated.max is None
     assert _schema.File(match=r"part-[0-9]+[.]txt").max is None
     assert _schema.File().max is None
     assert _schema.File(fmt="{value}", match=r".+") == _schema.File(fmt="{value}", match=r".+")
