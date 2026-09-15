@@ -2,10 +2,24 @@
 # This file deliberately tests private runtime implementation classes.
 
 import os
+import re
 from pathlib import Path
 
+import pytest
+from beartype.roar import BeartypeCallHintParamViolation
+
+import fs_schema as fss
 from fs_schema._fmt import CaptureMap, CompiledFormat, FmtField
-from fs_schema._schema import _FileMatch, _FixedFile, _TemplateCollection
+from fs_schema._schema import (
+    _ChildEntry,
+    _DirMatch,
+    _FileMatch,
+    _FixedDir,
+    _FixedFile,
+    _LoadableFile,
+    _LoadableFileMatch,
+    _TemplateCollection,
+)
 
 
 def test_fixed_file_owns_path_and_performs_io(tmp_path: Path) -> None:
@@ -27,6 +41,178 @@ def test_fixed_file_owns_path_and_performs_io(tmp_path: Path) -> None:
     assert fixed.read_text() == "first"
     fixed.put(b"second")
     assert fixed.read_bytes() == b"second"
+
+
+def test_fixed_directories_own_recursive_children_and_lookup(tmp_path: Path) -> None:
+    leaf = _FixedFile(tmp_path / "inner" / "leaf.txt")
+    inner_source = [_ChildEntry(leaf, "leaf.txt", "leaf_alias")]
+    inner = _FixedDir(tmp_path / "inner", inner_source)
+    outer_file = _FixedFile(tmp_path / "outer.txt")
+    anonymous = _FixedFile(tmp_path / "anonymous.txt")
+    outer_source = [
+        _ChildEntry(outer_file, "outer-file.txt", "outer_alias"),
+        _ChildEntry(inner, "inner-dir", "inner_alias"),
+        _ChildEntry(anonymous),
+    ]
+    outer = _FixedDir(tmp_path, outer_source)
+
+    inner_source.clear()
+    outer_source.reverse()
+    outer_source.clear()
+
+    assert tuple(inner) == (leaf,)
+    assert tuple(outer) == (outer_file, inner, anonymous)
+    assert outer[0] is outer_file
+    assert outer[-2] is inner
+    assert outer["outer-file.txt"] is outer_file
+    assert outer["outer_alias"] is outer_file
+    assert outer["outer_file_txt"] is outer_file
+    assert outer.outer_alias is outer_file
+    assert outer.outer_file_txt is outer_file
+    assert inner["leaf.txt"] is leaf
+    assert inner.leaf_alias is leaf
+    assert outer[2] is anonymous
+    with pytest.raises(KeyError):
+        _ = outer["anonymous.txt"]
+    with pytest.raises(AttributeError):
+        _ = outer.anonymous
+    with pytest.raises(AttributeError):
+        getattr(outer, "outer-file.txt")
+    with pytest.raises(KeyError):
+        _ = outer["missing"]
+    with pytest.raises(AttributeError):
+        _ = outer.missing
+    with pytest.raises(IndexError):
+        _ = outer[3]
+    with pytest.raises(IndexError):
+        _ = outer[-4]
+    with pytest.raises(BeartypeCallHintParamViolation):
+        outer.__getitem__(slice(None))  # pyright: ignore[reportCallIssue, reportArgumentType]
+    with pytest.raises(BeartypeCallHintParamViolation):
+        _FixedDir(42, ())  # pyright: ignore[reportArgumentType]
+    with pytest.raises(TypeError):
+        outer._lookup["new"] = 0  # pyright: ignore[reportIndexIssue]
+
+    iterator = iter(outer)
+    assert iter(iterator) is iterator
+    assert next(iterator) is outer_file
+    assert next(iterator) is inner
+    assert next(iterator) is anonymous
+    with pytest.raises(StopIteration):
+        _ = next(iterator)
+
+    captures = CaptureMap({"part": 7})
+    match_source = [
+        _ChildEntry(inner, "inner-dir", "inner_alias"),
+        _ChildEntry(outer_file, "outer-file.txt", "outer_alias"),
+    ]
+    match = _DirMatch(tmp_path / "part-7", ("part",), captures, match_source)
+    match_source.reverse()
+    match_source.clear()
+    captures._values["part"] = 8
+
+    assert match.args == ("part",)
+    assert match.kwargs is not captures
+    assert dict(match.kwargs) == {"part": 7}
+    assert tuple(match) == (inner, outer_file)
+    assert match[0] is match["inner-dir"] is match.inner_alias is inner
+    assert match[-1] is match.outer_file_txt is outer_file
+    assert inner[0] is leaf
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "key"),
+    [
+        (("same", None), ("same", None), "same"),
+        (("same", None), ("other", "same"), "same"),
+        (("same_name", None), ("same-name", None), "same_name"),
+        (("first", "same"), ("second", "same"), "same"),
+        (("first", "same_name"), ("same-name", None), "same_name"),
+        (("same name", None), ("same-name", None), "same_name"),
+    ],
+)
+def test_fixed_directories_reject_cross_child_key_collisions(
+    tmp_path: Path,
+    first: tuple[str, str | None],
+    second: tuple[str, str | None],
+    key: str,
+) -> None:
+    one = _FixedFile(tmp_path / "one")
+    two = _FixedFile(tmp_path / "two")
+    with pytest.raises(ValueError, match=repr(key)):
+        _FixedDir(
+            tmp_path,
+            [
+                _ChildEntry(one, first[0], first[1]),
+                _ChildEntry(two, second[0], second[1]),
+            ],
+        )
+
+
+def test_fixed_directories_accept_same_child_coincident_keys(tmp_path: Path) -> None:
+    child = _FixedFile(tmp_path / "same")
+    directory = _FixedDir(tmp_path, [_ChildEntry(child, "same", "same")])
+
+    assert directory["same"] is directory.same is child
+
+
+def test_fixed_directories_support_every_child_family(tmp_path: Path) -> None:
+    fixed_file = _FixedFile(tmp_path / "fixed.txt")
+    loadable_file = _LoadableFile[object](tmp_path / "loadable.txt")
+    fixed_dir = _FixedDir(tmp_path / "fixed-dir", ())
+    dir_match = _DirMatch(tmp_path / "dir-match", (), CaptureMap({}), ())
+    file_match = _FileMatch(tmp_path / "file-match.txt", (), CaptureMap({}))
+    loadable_match = _LoadableFileMatch[object](tmp_path / "loadable-match.txt")
+    collection_children = (
+        _TemplateCollection(tmp_path, (file_match,)),
+        _TemplateCollection(tmp_path, (loadable_match,)),
+        _TemplateCollection(tmp_path, (dir_match,)),
+    )
+    children = (
+        fixed_file,
+        loadable_file,
+        fixed_dir,
+        file_match,
+        loadable_match,
+        dir_match,
+        *collection_children,
+    )
+    entries = [_ChildEntry(child, f"child-{index}.value", f"alias_{index}") for index, child in enumerate(children)]
+    directory = _FixedDir(tmp_path / "parent", entries)
+
+    for index, child in enumerate(children):
+        normalized = re.sub(r"[^A-Za-z0-9_]+", "_", f"child-{index}.value")
+        assert directory[index] is child
+        assert directory[f"child-{index}.value"] is child
+        assert directory[f"alias_{index}"] is child
+        assert directory[normalized] is child
+        assert getattr(directory, f"alias_{index}") is child
+        assert getattr(directory, normalized) is child
+
+
+class _OtherMatch:
+    path = Path("other")
+    args: tuple[FmtField, ...] = ()
+    kwargs = CaptureMap({})
+
+    def __fspath__(self) -> str:
+        return os.fspath(self.path)
+
+    def format(self, *args: FmtField, **kwargs: FmtField) -> "fss.SchemaRoot[fss.Schema]":
+        _ = args, kwargs
+        raise NotImplementedError
+
+
+def test_fixed_directories_enforce_runtime_child_families(tmp_path: Path) -> None:
+    valid = _TemplateCollection(tmp_path, (_FileMatch(tmp_path / "match", (), CaptureMap({})),))
+    directory = _FixedDir(tmp_path, [_ChildEntry(valid, "valid")])
+    assert directory[0] is valid
+
+    with pytest.raises(BeartypeCallHintParamViolation):
+        _ChildEntry(object())  # pyright: ignore[reportArgumentType]
+    invalid = _TemplateCollection(tmp_path, (_OtherMatch(),))
+    with pytest.raises(BeartypeCallHintParamViolation):
+        _ChildEntry(invalid)  # pyright: ignore[reportArgumentType]
 
 
 def test_matches_and_collections_own_observed_values(tmp_path: Path) -> None:

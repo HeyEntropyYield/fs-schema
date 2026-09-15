@@ -42,15 +42,21 @@ def check() -> None:
     assert_type(dirs[0], _schema._DirMatch)
     assert_type(dirs[:], _schema._TemplateCollection[_schema._DirMatch])
     assert_type(dirs.format(), fss.SchemaRoot[fss.Schema])
-    assert_type(
-        fixed_dir()["child"],
-        _schema._FixedFile
-        | _schema._LoadableFile[object]
-        | _schema._FixedDir
-        | _schema._TemplateCollection[_schema._FileMatch]
-        | _schema._TemplateCollection[_schema._LoadableFileMatch[object]]
-        | _schema._TemplateCollection[_schema._DirMatch],
-    )
+    entries = [
+        _schema._ChildEntry(fixed_file(), "fixed.txt", "fixed"),
+        _schema._ChildEntry(fixed_dir(), "directory", "directory_alias"),
+        _schema._ChildEntry(plain_files(), "plain", "plain_alias"),
+        _schema._ChildEntry(loaded_files(), "loaded", "loaded_alias"),
+        _schema._ChildEntry(directories(), "dirs", "dirs_alias"),
+    ]
+    directory = _schema._FixedDir(Path("root"), entries)
+    assert_type(len(directory), int)
+    assert_type(directory[0], _schema.Child)
+    assert_type(directory["fixed.txt"], _schema.Child)
+    assert_type(directory.fixed, _schema.Child)
+    assert_type(iter(directory), Iterator[_schema.Child])
+    for child in directory:
+        assert_type(child, _schema.Child)
 
     def decode(path: Path) -> int: ...
 
