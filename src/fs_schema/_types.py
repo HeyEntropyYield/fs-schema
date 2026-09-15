@@ -11,7 +11,7 @@ LoadT = TypeVar("LoadT")
 
 # Two classes of alias here, and mixing them up silently disables beartype.
 # Anything reachable from a runtime-checked signature is built from real
-# objects, which is what drives the definition order in this file. Aliases
+# objects, which is what drives the defn order in this file. Aliases
 # that are recursive cannot be, and are static-only.
 PathIsh: TypeAlias = str | os.PathLike[str]
 

@@ -120,6 +120,7 @@ def test_field_enum_values_are_format_field_prototypes() -> None:
 def test_format_types_are_exact_and_atomic_inputs_are_beartyped() -> None:
     assert set(get_args(_fmt._ParserField)) == {str, int, date, time, datetime}
     assert set(get_args(_fmt.FmtField)) == {str, int, datetime}
+    assert set(get_args(_fmt.CaptureField)) == {str, int, datetime, type(None)}
 
     with pytest.raises(BeartypeCallHintParamViolation):
         _fmt.dt(1)  # pyright: ignore[reportArgumentType]
@@ -127,3 +128,5 @@ def test_format_types_are_exact_and_atomic_inputs_are_beartyped() -> None:
         _fmt.CompiledFormat(1)  # pyright: ignore[reportArgumentType]
     with pytest.raises(BeartypeCallHintParamViolation):
         _fmt.CompiledFormat("{value}").format(value=1.5)  # pyright: ignore[reportArgumentType]
+    with pytest.raises(BeartypeCallHintParamViolation):
+        _fmt.CompiledFormat("{value}").format(value=None)  # pyright: ignore[reportArgumentType]

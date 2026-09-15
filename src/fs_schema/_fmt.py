@@ -14,20 +14,22 @@ from typing_extensions import override
 FmtLike: TypeAlias = str
 # A parsed template field: {n:d} -> int, {stem} -> str, dt() -> datetime.
 FmtField: TypeAlias = str | int | datetime
+# Regex optional groups can be absent; format fields cannot.
+CaptureField: TypeAlias = FmtField | None
 _FORMATTER = Formatter()
 _DIRECTIVES = frozenset("aAwdbBmyYHIpMSfzZjUWcxX%")
 _INTEGER_TYPES = frozenset("bcdoxXn")
 
 
-class CaptureMap(Mapping[str, FmtField]):
+class CaptureMap(Mapping[str, CaptureField]):
     __slots__: Final = ("_values",)
-    _values: dict[str, FmtField]
+    _values: dict[str, CaptureField]
 
-    def __init__(self, values: Mapping[str, FmtField]) -> None:
+    def __init__(self, values: Mapping[str, CaptureField]) -> None:
         self._values = dict(values)
 
     @override
-    def __getitem__(self, key: str) -> FmtField:
+    def __getitem__(self, key: str) -> CaptureField:
         return self._values[key]
 
     @override
@@ -38,7 +40,7 @@ class CaptureMap(Mapping[str, FmtField]):
     def __len__(self) -> int:
         return len(self._values)
 
-    def __getattr__(self, name: str) -> FmtField:
+    def __getattr__(self, name: str) -> CaptureField:
         try:
             return self._values[name]
         except KeyError as error:
@@ -64,7 +66,7 @@ class _FormatFieldTemplate(Enum):
 
 @dataclass(frozen=True, slots=True)
 class ParsedCaptures:
-    args: tuple[FmtField, ...]
+    args: tuple[CaptureField, ...]
     kwargs: CaptureMap
 
 
