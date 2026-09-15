@@ -121,7 +121,7 @@ changes.
 File(
     name: str = "",
     *,
-    fmt: str | None = None,
+    fmt: FmtLike | None = None,
     match: str | None = None,
     min: int = 1,
     max: int | None = None,
@@ -134,7 +134,7 @@ File(
 Dir(
     name: str = "",
     *,
-    fmt: str | None = None,
+    fmt: FmtLike | None = None,
     match: str | None = None,
     min: int = 1,
     max: int | None = None,
@@ -144,7 +144,7 @@ Dir(
     schema: type[S] | None = None,
 ) -> Dir[S]
 
-dt(pattern: str) -> str
+dt(pattern: str) -> FmtLike
 ```
 
 The mapping table above defines the valid `Layout` key-value pairings.
@@ -249,15 +249,16 @@ collide with mapping methods.
 | --- | --- |
 | `collection[index]` | One `Match` |
 | `collection[slice]` | Another collection |
-| `filter(*args, **kwargs)` | Matching items, in collection order |
-| `find(*args, **kwargs)` | The sole item, or `MismatchErr` |
+| `filter(predicate)` | Lazy matching iterator, in collection order |
+| `find(predicate)` | The first matching item, or `None` |
 | `format(*args, **kwargs)` | A planned `SchemaRoot[Schema]` |
 
 ```python
-selected_days = days.filter(day=datetime(2026, 9, 10))
-selected_day = fss.raise_mismatch(
-    days.find(day=datetime(2026, 9, 10))
-)
+def is_selected_day(args, kwargs):
+    return kwargs["day"] == datetime(2026, 9, 10)
+
+selected_days = days.filter(is_selected_day)
+selected_day = days.find(is_selected_day)
 ```
 
 Formatting a collection or a concrete match plans a path without I/O. Its

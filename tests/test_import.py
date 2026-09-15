@@ -55,6 +55,7 @@ def test_private_runtime_names_are_not_reexported() -> None:
         "_LoadableFile",
         "_LoadableFileMatch",
         "_TemplateCollection",
+        "FmtLike",
         "load",
     )
     assert not any(hasattr(fs_schema, name) for name in private_names)

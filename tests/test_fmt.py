@@ -71,7 +71,8 @@ def test_datetime_formats_round_trip_named_and_public_dt_fields() -> None:
     assert parsed is not None
     assert parsed.kwargs == {"moment": moment}
 
-    date_only = _fmt.CompiledFormat(_fmt.dt("%Y%m%d"))
+    date_pattern: _fmt.FmtLike = _fmt.dt("%Y%m%d")
+    date_only = _fmt.CompiledFormat(date_pattern)
     assert date_only.format(moment) == "20260914"
     parsed_date = date_only.parse("20260914")
     assert parsed_date is not None
