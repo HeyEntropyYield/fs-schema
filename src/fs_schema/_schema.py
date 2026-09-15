@@ -1,11 +1,16 @@
 import os
-from collections.abc import Callable, Iterator, Sequence
+import re
+import typing
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import KW_ONLY, dataclass
 from datetime import datetime
 from pathlib import Path
+from types import MappingProxyType
 from typing import (
+    TYPE_CHECKING,
     ClassVar,
     Final,
+    ForwardRef,
     Generic,
     TypeAlias,
     TypeVar,
@@ -200,17 +205,8 @@ class _LoadableFile(_FixedFile, Generic[_L_co]):
         raise NotImplementedError
 
 
-class _FixedDir(_Fixed):
-    @property
-    @override
-    def _defn(self) -> "Dir[Schema]":
-        raise NotImplementedError
-
-    def __getattr__(self, name: str) -> "Child":
-        raise NotImplementedError
-
-    def __getitem__(self, key: str | int) -> "Child":
-        raise NotImplementedError
+def _normalize_name(name: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_]+", "_", name)
 
 
 ## Runtime template matches and collections
@@ -244,11 +240,6 @@ class _FileMatch(_MatchBase, _FixedFile):
 
 class _LoadableFileMatch(_MatchBase, _LoadableFile[_L_co], Match, Generic[_L_co]):
     @override
-    def format(self, *args: FmtField, **kwargs: FmtField) -> "SchemaRoot[Schema]":
-        raise NotImplementedError
-
-
-class _DirMatch(_MatchBase, _FixedDir):
     def format(self, *args: FmtField, **kwargs: FmtField) -> "SchemaRoot[Schema]":
         raise NotImplementedError
 
@@ -288,14 +279,101 @@ class _TemplateCollection(Sequence[_M_co], Generic[_M_co]):
         raise NotImplementedError
 
 
-Child: TypeAlias = (
-    _FixedFile
-    | _LoadableFile[object]
-    | _FixedDir
-    | _TemplateCollection[_FileMatch]
-    | _TemplateCollection[_LoadableFileMatch[object]]
-    | _TemplateCollection[_DirMatch]
-)
+# Static and runtime aliases describe the same precise families. Runtime uses
+# explicit ForwardRef objects because beartype cannot resolve a subscripted
+# forward-reference string while the recursive directory classes are defined.
+if TYPE_CHECKING:
+    Child: TypeAlias = (
+        "_FixedFile | _FixedDir | _TemplateCollection[_FileMatch | _LoadableFileMatch[object] | _DirMatch]"
+    )
+else:
+    Child: TypeAlias = typing.Union[  # noqa: UP007
+        _FixedFile,
+        ForwardRef("_FixedDir"),
+        _TemplateCollection[
+            typing.Union[_FileMatch, _LoadableFileMatch[object], ForwardRef("_DirMatch")]  # noqa: UP007
+        ],
+    ]
+
+
+@dataclass(frozen=True, slots=True)
+class _ChildEntry:
+    child: Child
+    name: str | None = None
+    alias: str | None = None
+
+
+class _FixedDir(_Fixed):
+    _children: tuple[_ChildEntry, ...]
+    _lookup: Mapping[str, int]
+
+    def __init__(self, path: PathIsh, children: Sequence[_ChildEntry]) -> None:
+        _Fixed.__init__(self, path)
+        self._children = tuple(children)
+        lookup: dict[str, int] = {}
+
+        def add(key: str, index: int) -> None:
+            if key in lookup and lookup[key] != index:
+                raise ValueError(f"duplicate child key: {key!r}")
+            lookup[key] = index
+
+        for index, entry in enumerate(self._children):
+            if entry.name is not None:
+                add(entry.name, index)
+        for index, entry in enumerate(self._children):
+            if entry.alias is not None:
+                add(entry.alias, index)
+        for index, entry in enumerate(self._children):
+            if entry.name is not None:
+                add(_normalize_name(entry.name), index)
+        self._lookup = MappingProxyType(lookup)
+
+    @property
+    @override
+    def _defn(self) -> "Dir[Schema]":
+        raise NotImplementedError
+
+    def __iter__(self) -> Iterator[Child]:
+        return (entry.child for entry in self._children)
+
+    def __len__(self) -> int:
+        return len(self._children)
+
+    @overload
+    def __getitem__(self, index: int) -> Child: ...
+
+    @overload
+    def __getitem__(self, index: str) -> Child: ...
+
+    def __getitem__(self, index: int | str) -> Child:
+        if isinstance(index, str):
+            return self._children[self._lookup[index]].child
+        return self._children[index].child
+
+    def __getattr__(self, name: str) -> Child:
+        try:
+            entry = self._children[self._lookup[name]]
+        except KeyError:
+            raise AttributeError(name) from None
+        if name == entry.alias or (entry.name is not None and name == _normalize_name(entry.name)):
+            return entry.child
+        raise AttributeError(name)
+
+
+class _DirMatch(_MatchBase, _FixedDir):
+    def __init__(
+        self,
+        path: PathIsh,
+        args: tuple[FmtField, ...],
+        kwargs: CaptureMap,
+        children: Sequence[_ChildEntry],
+    ) -> None:
+        _FixedDir.__init__(self, path, children)
+        self._args: tuple[FmtField, ...] = tuple(args)
+        self._kwargs: CaptureMap = CaptureMap(kwargs)
+
+    def format(self, *args: FmtField, **kwargs: FmtField) -> "SchemaRoot[Schema]":
+        raise NotImplementedError
 
 
 ## Schemas
