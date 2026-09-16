@@ -1,8 +1,9 @@
+import keyword
 import os
 import re
 import typing
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from dataclasses import KW_ONLY, dataclass, field
+from dataclasses import KW_ONLY, dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from types import MappingProxyType
@@ -20,6 +21,7 @@ from typing import (
 from typing_extensions import (
     Protocol,
     Self,
+    TypeIs,
     TypeVar,
     override,
     runtime_checkable,
@@ -128,7 +130,7 @@ class Dir(Node, Generic[_D_co]):
 
 @final
 class FilesKey:
-    __slots__ = ()
+    __slots__: Final = ()
 
     @override
     def __repr__(self) -> str:
@@ -167,26 +169,40 @@ class _DirDefn:
     defn: Dir["Schema"]
     defns: tuple["_Defn", ...]
     lookup: Mapping[str, int]
+    child_type: "type[Schema] | None"
 
-    def __init__(self, defn: Dir["Schema"], defns: "Sequence[File[object] | _DirDefn]" = ()) -> None:
+    def __init__(
+        self,
+        defn: Dir["Schema"],
+        defns: "Sequence[File[object] | _DirDefn]" = (),
+        child_type: "type[Schema] | None" = None,
+    ) -> None:
         child_defns = tuple(defns)
         lookup: dict[str, int] = {}
+        identities: dict[str, int] = {}
 
-        def add(key: str, index: int) -> None:
-            if key in lookup and lookup[key] != index:
+        def add(target: dict[str, int], key: str, index: int) -> None:
+            if key in target and target[key] != index:
                 raise ValueError(f"duplicate child key: {key!r}")
-            lookup[key] = index
+            target[key] = index
 
         for index, child_defn in enumerate(child_defns):
             node = _node(child_defn)
+            for identity in dict.fromkeys(
+                key
+                for key in (node.alias, node.name, _normalize_name(node.name) if node.name else None, node.fmt)
+                if key
+            ):
+                add(identities, identity, index)
             if node.name:
-                add(node.name, index)
-                add(_normalize_name(node.name), index)
-            if node.alias is not None:
-                add(node.alias, index)
+                add(lookup, node.name, index)
+                add(lookup, _normalize_name(node.name), index)
+            if node.alias:
+                add(lookup, node.alias, index)
         object.__setattr__(self, "defn", defn)
         object.__setattr__(self, "defns", child_defns)
         object.__setattr__(self, "lookup", MappingProxyType(lookup))
+        object.__setattr__(self, "child_type", child_type)
 
 
 _Defn: TypeAlias = File[object] | _DirDefn
@@ -262,9 +278,6 @@ class _FixedFile(_Fixed, Generic[_L_co]):
         if isinstance(schema, type):
             return typing.cast(_L_co | Exception, _load_model(self.path, schema))
         return load(self.path, schema)
-
-    def as_match(self, captures: ParsedCaptures) -> "_FileMatch[_L_co]":
-        return _FileMatch(self.path, captures, self.defn)
 
 
 def _normalize_name(name: str) -> str:
@@ -386,9 +399,6 @@ class _FixedDir(_Fixed):
             raise AttributeError(name)
         return child
 
-    def as_match(self, captures: ParsedCaptures) -> "_DirMatch":
-        return _DirMatch(self.path, captures, self._children, self.defn)
-
 
 class _DirMatch(_CaptureState, _FixedDir):
     def __init__(self, path: PathIsh, captures: ParsedCaptures, children: Sequence[Child], defn: _DirDefn) -> None:
@@ -415,37 +425,34 @@ def _validate_node(node: Node) -> tuple[_Selector, int | None]:
     return _Selector(node.fmt, node.match), maximum
 
 
-def _validate_schema_contract(path: Path, schema: type["Schema"]) -> MismatchErr | None:
-    return MismatchErr(f"directory schema connector is not connected for {path} ({schema.__name__})")
+FsCache: TypeAlias = dict[Path, CacheSeq[Path]]
+_MatchValue = TypeVar("_MatchValue", bound=Match)
 
 
 def _is_kind(path: Path, defn: _Defn) -> bool:
     return path.is_file() if isinstance(defn, File) else path.is_dir()
 
 
-_Listing: TypeAlias = CacheSeq[Path]
-
-
-def _bind_dir(path: Path, dir_defn: _DirDefn) -> _FixedDir | MismatchErr:
-    listing = CacheSeq(lambda: sorted(path.iterdir(), key=lambda entry: entry.name))
-
-    # Wrapped in lambda instead of direct pass else beartype would eval it early
-    def get_listing() -> _Listing:
-        return listing
+def _bind_children(path: Path, dir_defn: _DirDefn, cache: FsCache) -> tuple[Child, ...] | MismatchErr:
+    if not path.is_dir():
+        return MismatchErr(f"expected directory: {path}")
 
     children: list[Child] = []
     for position, defn in enumerate(dir_defn.defns):
-        if is_mismatch(child := _bind_dir_defn(path, position, defn, get_listing)):
+        if is_mismatch(child := _bind_dir_defn(path, position, defn, cache)):
             return child
         children.append(child)
-
-    if dir_defn.defn.schema is not None:
-        if is_mismatch(mismatch := _validate_schema_contract(path, dir_defn.defn.schema)):
-            return mismatch
-    return _FixedDir(path, children, dir_defn)
+    return tuple(children)
 
 
-def _bind_dir_defn(path: Path, position: int, defn: _Defn, listing: Callable[[], _Listing]) -> Child | MismatchErr:
+def _listing(path: Path, cache: FsCache) -> CacheSeq[Path]:
+    listing = cache.get(path)
+    if listing is None:
+        listing = cache[path] = CacheSeq(lambda: sorted(path.iterdir(), key=lambda entry: entry.name))
+    return listing
+
+
+def _bind_dir_defn(path: Path, position: int, defn: _Defn, cache: FsCache) -> Child | MismatchErr:
     node = _node(defn)
     if node.name:
         target = path / node.name
@@ -454,9 +461,9 @@ def _bind_dir_defn(path: Path, position: int, defn: _Defn, listing: Callable[[],
         if not _is_kind(target, defn):
             kind = "file" if isinstance(defn, File) else "directory"
             return MismatchErr(f"expected {kind}: {target}")
-        return _bind_fixed(target, defn)
+        return _bind_fixed(target, defn, cache)
 
-    if is_mismatch(matches := _bind_matches(defn, listing())):
+    if is_mismatch(matches := _bind_matches(defn, _listing(path, cache), cache)):
         return matches
     count = len(matches)
     if count < node.min or (node.max is not None and count > node.max):
@@ -466,90 +473,348 @@ def _bind_dir_defn(path: Path, position: int, defn: _Defn, listing: Callable[[],
 
 
 @overload
-def _bind_fixed(path: Path, defn: File[_L]) -> _FixedFile[_L]: ...
+def _bind_fixed(path: Path, defn: File[_L], cache: FsCache) -> _FixedFile[_L]: ...
 
 
 @overload
-def _bind_fixed(path: Path, defn: _DirDefn) -> _FixedDir | MismatchErr: ...
+def _bind_fixed(path: Path, defn: _DirDefn, cache: FsCache) -> _FixedDir | MismatchErr: ...
 
 
-def _bind_fixed(path: Path, defn: _Defn) -> _FixedFile[object] | _FixedDir | MismatchErr:
+def _bind_fixed(path: Path, defn: _Defn, cache: FsCache) -> _FixedFile[object] | _FixedDir | MismatchErr:
     if isinstance(defn, File):
         return _FixedFile(path, defn)
-    return _bind_dir(path, defn)
+    if is_mismatch(children := _bind_children(path, defn, cache)):
+        return children
+    return (defn.child_type or _FixedDir)(path, children, defn)
 
 
-@overload
-def _bind_matches(defn: File[_L], listing: _Listing) -> Sequence[_FileMatch[_L]]: ...
-
-
-@overload
-def _bind_matches(defn: _DirDefn, listing: _Listing) -> Sequence[_DirMatch] | MismatchErr: ...
-
-
-def _bind_matches(defn: _Defn, listing: _Listing) -> Sequence[_FileMatch[object] | _DirMatch] | MismatchErr:
-    node = _node(defn)
-    matches: list[_FileMatch[object] | _DirMatch] = []
-    for target in listing:
-        if (captures := node.select(target.name)) is None or not _is_kind(target, defn):
-            continue
-        if is_mismatch(fixed := _bind_fixed(target, defn)):
-            return fixed
-        matches.append(fixed.as_match(captures))
-
+def _sort_matches(matches: list[_MatchValue], node: Node) -> list[_MatchValue]:
     if node.sort is not None:
-        sort = typing.cast(Callable[[_FileMatch[object] | _DirMatch], typing.Any], node.sort)
+        sort = typing.cast(Callable[[Match], typing.Any], node.sort)
         matches.sort(key=sort, reverse=node.sort_rev)
     else:
-        captures = [match.args + tuple(match.kwargs.values()) for match in matches]
-        if captures and all(len(values) == 1 and isinstance(values[0], datetime) for values in captures):
-            order = sorted(range(len(matches)), key=captures.__getitem__, reverse=node.sort_rev)
+        captured = [match.args + tuple(match.kwargs.values()) for match in matches]
+        if captured and all(len(values) == 1 and isinstance(values[0], datetime) for values in captured):
+            order = sorted(range(len(matches)), key=captured.__getitem__, reverse=node.sort_rev)
             matches = [matches[index] for index in order]
         else:
             matches.sort(key=lambda match: match.path.name, reverse=node.sort_rev)
     return matches
 
 
+def _bind_file_matches(defn: File[_L], listing: Sequence[Path]) -> list[_FileMatch[_L]]:
+    matches: list[_FileMatch[_L]] = []
+    for target in listing:
+        if (captures := defn.select(target.name)) is None or not _is_kind(target, defn):
+            continue
+        matches.append(_FileMatch(target, captures, defn))
+    return _sort_matches(matches, defn)
+
+
+def _bind_dir_matches(defn: _DirDefn, listing: Sequence[Path], cache: FsCache) -> list[_DirMatch] | MismatchErr:
+    matches: list[_DirMatch] = []
+    for target in listing:
+        if (captures := defn.defn.select(target.name)) is None or not _is_kind(target, defn):
+            continue
+        if is_mismatch(children := _bind_children(target, defn, cache)):
+            return children
+        matches.append(_DirMatch(target, captures, children, defn))
+    return _sort_matches(matches, defn.defn)
+
+
+@overload
+def _bind_matches(defn: File[_L], listing: Sequence[Path], cache: FsCache) -> Sequence[_FileMatch[_L]]: ...
+
+
+@overload
+def _bind_matches(defn: _DirDefn, listing: Sequence[Path], cache: FsCache) -> Sequence[_DirMatch] | MismatchErr: ...
+
+
+def _bind_matches(
+    defn: _Defn, listing: Sequence[Path], cache: FsCache
+) -> Sequence[_FileMatch[object] | _DirMatch] | MismatchErr:
+    if isinstance(defn, File):
+        return _bind_file_matches(defn, listing)
+    return _bind_dir_matches(defn, listing, cache)
+
+
 def bind_defns(root: PathIsh, defns: Sequence[_Defn]) -> _FixedDir | MismatchErr:
     path = Path(root)
-    if not path.is_dir():
-        return MismatchErr(f"expected directory: {path}")
-    return _bind_dir(path, _DirDefn(Dir(name="."), defns))
+    dir_defn = _DirDefn(Dir(name="."), defns)
+    if is_mismatch(children := _bind_children(path, dir_defn, {})):
+        return children
+    return _FixedDir(path, children, dir_defn)
 
 
 ## Schemas
 
 
-# Class-level surface. A metaclass because __getattr__ on a parent serves
-# instances, so `MySchema.dir` would not resolve. __new__ reifies `schema`
-# once, caching a child class per node in declaration order.
-class SchemaCls(type):
-    # Must raise for any name it does not own. beartype probes __parameters__
-    # on every hint, and resolves forward refs by attribute lookup, so a
-    # catch-all here surfaces as an error inside unrelated functions.
-    def __getattr__(cls, name: str) -> "type[Schema]":
-        raise AttributeError(name)
+def _is_schema_type(value: object) -> TypeIs["type[Schema]"]:
+    return isinstance(value, SchemaCls) and issubclass(value, Schema)
 
-    # For `def f(x: "MySchema.RootT")`. Widens to SchemaRoot[Schema]; prefer
-    # fss.SchemaRoot[MySchema] where a checker should see the exact schema.
+
+def _schema_defn_for(schema_type: "type[Schema]") -> _DirDefn:
+    value = vars(schema_type).get("_schema_defn")
+    if not isinstance(value, _DirDefn):
+        raise AssertionError(f"{schema_type.__name__} has no compiled schema definition")
+    return value
+
+
+def _invalid_schema(class_name: str, detail: str) -> TypeError:
+    return TypeError(f"{class_name}.schema {detail}")
+
+
+def _validate_schema_node(class_name: str, key: object, node: Node) -> None:
+    if node.name and (node.name in {".", ".."} or "\0" in node.name or "/" in node.name or "\\" in node.name):
+        raise _invalid_schema(class_name, f"declaration {key!r} name must be a basename")
+    if node.alias and (not node.alias.isidentifier() or keyword.iskeyword(node.alias) or node.alias.startswith("_")):
+        raise _invalid_schema(class_name, f"declaration {key!r} alias must be a public identifier")
+    if isinstance(node, Dir) and node.schema is not None and not _is_schema_type(node.schema):
+        raise _invalid_schema(class_name, f"declaration {key!r} Dir.schema must be a Schema subclass")
+
+
+def _aliased_file(alias: str, source: File[_L]) -> File[_L]:
+    return source if source.alias == alias else replace(source, alias=alias)
+
+
+def _identity(defn: _Defn) -> str | None:
+    node = _node(defn)
+    return node.alias or node.name or node.fmt or None
+
+
+def _merge_defns(base: Sequence[_Defn], local: Sequence[_Defn]) -> tuple[_Defn, ...]:
+    merged = list(base)
+    positions = {identity: index for index, defn in enumerate(base) if (identity := _identity(defn)) is not None}
+    for defn in local:
+        identity = _identity(defn)
+        if identity is None or identity not in positions:
+            if identity is not None:
+                positions[identity] = len(merged)
+            merged.append(defn)
+        else:
+            merged[positions[identity]] = defn
+    return tuple(merged)
+
+
+def _children_satisfy(actual: Sequence[_Defn], required: Sequence[_Defn]) -> bool:
+    matched_anonymous: set[int] = set()
+    for required_child in required:
+        identity = _identity(required_child)
+        if identity is None:
+            found = next(
+                (
+                    index
+                    for index, candidate in enumerate(actual)
+                    if index not in matched_anonymous and _defn_satisfies(candidate, required_child)
+                ),
+                None,
+            )
+            if found is None:
+                return False
+            matched_anonymous.add(found)
+            continue
+        actual_child = next((candidate for candidate in actual if _identity(candidate) == identity), None)
+        if actual_child is None or not _defn_satisfies(actual_child, required_child):
+            return False
+    return True
+
+
+def _defn_satisfies(actual: _Defn, required: _Defn) -> bool:
+    if isinstance(required, File):
+        return isinstance(actual, File) and actual == required
+    return (
+        isinstance(actual, _DirDefn)
+        and actual.defn == required.defn
+        and _children_satisfy(actual.defns, required.defns)
+    )
+
+
+def _make_inline_schema(class_name: str, module: str, position: int, layout: dict[object, object]) -> "type[Schema]":
+    generated = type(
+        f"_{class_name}Child{position}",
+        (Schema,),
+        {"__module__": module, "schema": layout},
+    )
+    if not _is_schema_type(generated):
+        raise AssertionError("generated Schema child has an invalid type")
+    return generated
+
+
+def _directory_defn(class_name: str, key: object, node: "Dir[Schema]", child_type: "type[Schema]") -> _DirDefn:
+    child_root = _schema_defn_for(child_type)
+    compiled = _DirDefn(node, child_root.defns, child_type)
+    if node.schema is not None:
+        contract = _schema_defn_for(node.schema)
+        if not _children_satisfy(compiled.defns, contract.defns):
+            raise _invalid_schema(class_name, f"declaration {key!r} RHS does not satisfy Dir.schema")
+    return compiled
+
+
+def _is_schema_dir(value: object) -> TypeIs["Dir[Schema]"]:
+    return isinstance(value, Dir)
+
+
+def _is_raw_mapping(value: object) -> TypeIs[dict[object, object]]:
+    return isinstance(value, dict)
+
+
+def _is_raw_list(value: object) -> TypeIs[list[object]]:
+    return isinstance(value, list)
+
+
+def _raw_schema(cls: "type[Schema]") -> object:
+    return cls.schema if "schema" in cls.__dict__ else {}
+
+
+def _compile_local_defns(cls: "type[Schema]") -> tuple[_Defn, ...]:
+    raw = _raw_schema(cls)
+    if not _is_raw_mapping(raw):
+        raise _invalid_schema(cls.__name__, "must be a dict")
+    entries = raw
+    defns: list[_Defn] = []
+    for key, value in entries.items():
+        match key, value:
+            case FilesKey() as token, _ if token is FILES and _is_raw_list(value):
+                for item in value:
+                    if isinstance(item, str):
+                        file = File(name=item)
+                    elif isinstance(item, File):
+                        file = item
+                    else:
+                        raise _invalid_schema(cls.__name__, f"key {key!r} member {item!r} must be a str or File")
+                    _validate_schema_node(cls.__name__, key, file)
+                    defns.append(file)
+            case str() as name, _ if _is_raw_mapping(value):
+                node: Dir[Schema] = Dir(name=name)
+                _validate_schema_node(cls.__name__, key, node)
+                child_type = _make_inline_schema(cls.__name__, cls.__module__, len(defns), value)
+                defns.append(_directory_defn(cls.__name__, key, node, child_type))
+            case lhs, _ if _is_schema_dir(lhs) and _is_raw_mapping(value):
+                node = lhs
+                _validate_schema_node(cls.__name__, key, node)
+                child_type = _make_inline_schema(cls.__name__, cls.__module__, len(defns), value)
+                defns.append(_directory_defn(cls.__name__, key, node, child_type))
+            case str() as name, rhs if _is_schema_type(rhs):
+                node = Dir(name=name)
+                _validate_schema_node(cls.__name__, key, node)
+                defns.append(_directory_defn(cls.__name__, key, node, rhs))
+            case lhs, rhs if _is_schema_dir(lhs) and _is_schema_type(rhs):
+                node = lhs
+                _validate_schema_node(cls.__name__, key, node)
+                defns.append(_directory_defn(cls.__name__, key, node, rhs))
+            case str() as alias, str() as name:
+                file = File(name=name, alias=alias)
+                _validate_schema_node(cls.__name__, key, file)
+                defns.append(file)
+            case str() as alias, File() as source:
+                file = _aliased_file(alias, source)
+                _validate_schema_node(cls.__name__, key, file)
+                defns.append(file)
+            case FilesKey() as token, _ if token is FILES:
+                raise _invalid_schema(cls.__name__, f"key {key!r} requires a list of file declarations")
+            case _:
+                raise _invalid_schema(cls.__name__, f"invalid entry at key {key!r}")
+    return tuple(defns)
+
+
+_CAPTURE_MEMBERS: Final = frozenset(("args", "kwargs"))
+_UNSAFE_SCHEMA_DUNDERS: Final = frozenset(
+    "RootT __delattr__ __fspath__ __getattr__ __getattribute__ __getitem__ __init__ __init_subclass__ "
+    "__iter__ __len__ __new__ __setattr__ __slots__".split()  # pyright: ignore[reportImplicitStringConcatenation]
+)
+
+
+def _validate_schema_bases(class_name: str, bases: tuple[type[object], ...]) -> None:
+    if "Schema" not in globals():
+        return
+    if len(bases) != 1 or not _is_schema_type(bases[0]):
+        raise TypeError(f"{class_name} must have exactly one direct Schema base and no mixins")
+
+
+def _validate_schema_class(cls: "type[Schema]") -> None:
+    if type(cls) is not SchemaCls:
+        raise TypeError(f"{cls.__name__} must use the exact Schema metaclass")
+    if len(cls.__bases__) != 1 or not _is_schema_type(cls.__bases__[0]):
+        raise TypeError(f"{cls.__name__} must have exactly one direct Schema base and no mixins")
+
+    inherited_members = {
+        name for ancestor in cls.__mro__[1:] for name in ancestor.__dict__ if not name.startswith("__")
+    } - {"schema"}
+    if unsafe := cls.__dict__.keys() & (inherited_members | _CAPTURE_MEMBERS | _UNSAFE_SCHEMA_DUNDERS):
+        raise TypeError(f"{cls.__name__} Schema declaration cannot override {sorted(unsafe)[0]!r}")
+
+
+def _compile_schema(cls: "type[Schema]") -> None:
+    base = cls.__bases__[0]
+    if not _is_schema_type(base):
+        raise AssertionError("validated Schema class lost its Schema base")
+    local_defns = _compile_local_defns(cls)
+    try:
+        _ = _DirDefn(Dir(name="."), local_defns)
+        defns = _merge_defns(_schema_defn_for(base).defns, local_defns)
+        type.__setattr__(cls, "_schema_defn", _DirDefn(Dir(name="."), defns))
+    except ValueError as error:
+        raise _invalid_schema(cls.__name__, str(error)) from error
+
+
+def _validate_child_shadows(cls: "type[Schema]") -> None:
+    for defn in _schema_defn_for(cls).defns:
+        node = _node(defn)
+        for name in (node.alias or None, _normalize_name(node.name) if node.name else None):
+            if name is not None and (
+                name in _CAPTURE_MEMBERS
+                or any(name in ancestor.__dict__ for ancestor in (*cls.__mro__, *type(cls).__mro__))
+            ):
+                raise _invalid_schema(cls.__name__, f"child {name!r} shadows a Schema member")
+
+
+class SchemaCls(type):
+    def __new__(
+        metacls: "type[SchemaCls]",
+        name: str,
+        bases: tuple[type[object], ...],
+        namespace: dict[str, object],
+        **kwargs: object,
+    ) -> "SchemaCls":
+        _validate_schema_bases(name, bases)
+        return super().__new__(metacls, name, bases, namespace, **kwargs)
+
+    def __getattr__(cls, name: str) -> type:
+        if name.startswith("_") or not _is_schema_type(cls):
+            raise AttributeError(name)
+        try:
+            root_defn = _schema_defn_for(cls)
+            defn = root_defn.defns[root_defn.lookup[name]]
+        except (AssertionError, KeyError):
+            raise AttributeError(name) from None
+        node = _node(defn)
+        if name != node.alias and name != _normalize_name(node.name):
+            raise AttributeError(name)
+        if node.name:
+            child_type: type[object] = _FixedFile if isinstance(defn, File) else defn.child_type or _FixedDir
+        else:
+            child_type = _Template if node.fmt is not None else _Matches
+        return child_type
+
     @property
     def RootT(cls) -> "type[SchemaRoot[Schema]]":
         raise NotImplementedError
 
 
-# A layout pointed at a root. Paths are known, nothing is checked, and the
-# schema is carried in the parameter so bind() returns that type.
 class SchemaRoot(_FixedDir, Generic[_S]):
-    # Planned implicit dot directory. It is a concrete Located directory, but
-    # bind() is the transition that verifies its declared layout.
     def bind(self) -> "_S | MismatchErr":
         raise NotImplementedError
 
 
 class Schema(_FixedDir, metaclass=SchemaCls):
-    # Validated implicit dot directory. Reified children carry the file,
-    # collection, and match capabilities appropriate to their declarations.
-    schema: ClassVar["Layout"]
+    schema: ClassVar["Layout"] = {}
+    _schema_defn: ClassVar[_DirDefn] = _DirDefn(Dir(name="."))
+
+    def __init_subclass__(cls) -> None:
+        super().__init_subclass__()
+        _validate_schema_class(cls)
+        _compile_schema(cls)
+        _validate_child_shadows(cls)
 
     @classmethod
     def relative_to(cls: type[_S], root: PathIsh) -> "SchemaRoot[_S]":
@@ -557,7 +822,10 @@ class Schema(_FixedDir, metaclass=SchemaCls):
 
     @classmethod
     def bind(cls: type[_S], root: PathIsh | Located) -> "_S | MismatchErr":
-        raise NotImplementedError
+        path = root.path if isinstance(root, Located) else Path(root)
+        if is_mismatch(children := _bind_children(path, cls._schema_defn, {})):
+            return children
+        return cls(path, children, cls._schema_defn)
 
     def root(self) -> "SchemaRoot[Self]":
         raise NotImplementedError
