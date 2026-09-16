@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from beartype.roar import BeartypeCallHintParamViolation
 
+from fs_schema import Match
 from fs_schema._fmt import CaptureMap, ParsedCaptures
 from fs_schema._schema import (
     Dir,
@@ -80,20 +81,6 @@ def test_matches_and_templates_are_distinct_but_constructors_copy_collections(tm
     assert not hasattr(matches, "format")
 
 
-def test_fixed_file_as_match_keeps_loader_behavior(tmp_path: Path) -> None:
-    path = tmp_path / "value.txt"
-    _ = path.write_text("loaded")
-
-    def decode(source: Path) -> str:
-        return source.read_text()
-
-    node: File[str] = File(name="value.txt", schema=decode)
-    fixed: _FixedFile[str] = _FixedFile(path, node)
-    matched: _FileMatch[str] = fixed.as_match(ParsedCaptures((), CaptureMap({})))
-    assert isinstance(matched, _FileMatch)
-    assert fixed.load() == "loaded" and matched.load() == "loaded"
-
-
 @pytest.mark.parametrize(
     ("first", "second", "key"),
     [
@@ -117,6 +104,8 @@ def test_directory_lookup_derives_keys_and_keeps_anonymous_collection_integer_on
     directory = _FixedDir(tmp_path, (fixed, anonymous), defn)
     assert directory["same-name"] is directory["same_name"] is fixed
     assert directory.same_name is fixed and directory[1] is anonymous
+    with pytest.raises(AttributeError):
+        _ = directory.wrong_attribute
     with pytest.raises(KeyError):
         _ = directory["anonymous"]
     with pytest.raises(AttributeError):
@@ -135,3 +124,16 @@ def test_directory_match_carries_its_defn_and_captures(tmp_path: Path) -> None:
     matched = _DirMatch(tmp_path / "run-1", ParsedCaptures((), CaptureMap({"n": "1"})), (), defn)
     assert matched.defn is defn and matched.defn.defn is defn.defn
     assert matched.kwargs["n"] == "1"
+
+
+def test_schema_ordinary_construction_has_fixed_directory_protocol(tmp_path: Path) -> None:
+    from fs_schema._schema import Schema
+
+    class Concrete(Schema):
+        pass
+
+    defn = _DirDefn(Dir(name="."))
+    fixed = Concrete(tmp_path, (), defn)
+    assert type(fixed) is Concrete and fixed.path == tmp_path
+    assert not hasattr(fixed, "args") and not hasattr(fixed, "kwargs")
+    assert not isinstance(fixed, Match)

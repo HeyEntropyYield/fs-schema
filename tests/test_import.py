@@ -3,6 +3,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from beartype.roar import BeartypeClawDecorWarning
+
 import fs_schema
 from fs_schema import (
     FILES,
@@ -95,8 +97,11 @@ def test_dt_wraps_unnamed_datetime_field() -> None:
 
 PACKAGE_HOOK_PROBE = """
 import sys
+import warnings
 
-from beartype.roar import BeartypeCallHintParamViolation
+from beartype.roar import BeartypeCallHintParamViolation, BeartypeClawDecorWarning
+
+warnings.simplefilter("error", BeartypeClawDecorWarning)
 
 modules = (
     "fs_schema._fmt",
@@ -119,6 +124,7 @@ else:
 
 
 def test_ordinary_import_installs_package_hook_before_api_modules() -> None:
+    assert issubclass(BeartypeClawDecorWarning, Warning)
     result = subprocess.run(
         [sys.executable, "-I", "-c", PACKAGE_HOOK_PROBE],
         check=False,

@@ -29,10 +29,15 @@ def check() -> None:
     directory = _schema._FixedDir(Path("root"), (fixed, plain, template, directories), dir_defn)
     listing: CacheSeq[Path] = CacheSeq(lambda: [Path("part-1")])
     text_defn: _schema.File[str] = _schema.File(name="text", schema=lambda path: path.name)
+    aliased_text = _schema._aliased_file("text_alias", text_defn)
 
     accepts_located(fixed)
     accepts_match(match)
+    accepts_located(directory)
+    accepts_located(dir_match)
+    accepts_match(dir_match)
     assert_type(file_defn, _schema.File[object])
+    assert_type(aliased_text, _schema.File[str])
     assert_type(dir_defn.defns, tuple[_schema._Defn, ...])
     assert_type(fixed.defn, _schema.File[object])
     assert_type(plain[0], _schema._FileMatch[object])
@@ -45,12 +50,31 @@ def check() -> None:
     assert_type(directories[0], _schema._DirMatch)
     assert_type(directory[0], _schema.Child)
     assert_type(iter(directory), Iterator[_schema.Child])
-    assert_type(_schema._bind_fixed(Path("text"), text_defn), _schema._FixedFile[str])
-    assert_type(_schema._bind_fixed(Path("directory"), dir_defn), _schema._FixedDir | fss.MismatchErr)
-    assert_type(_schema._bind_matches(text_defn, listing), Sequence[_schema._FileMatch[str]])
-    assert_type(_schema._bind_matches(dir_defn, listing), Sequence[_schema._DirMatch] | fss.MismatchErr)
+    assert_type(_schema._bind_matches(text_defn, listing, {}), Sequence[_schema._FileMatch[str]])
+    assert_type(_schema._bind_matches(dir_defn, listing, {}), Sequence[_schema._DirMatch] | fss.MismatchErr)
+    assert_type(_schema._bind_fixed(Path("text"), text_defn, {}), _schema._FixedFile[str])
+    assert_type(_schema._bind_fixed(Path("directory"), dir_defn, {}), _schema._FixedDir | fss.MismatchErr)
+    assert_type(_schema._bind_children(Path("root"), dir_defn, {}), tuple[_schema.Child, ...] | fss.MismatchErr)
     bound = _schema.bind_defns(Path("root"), (file_defn, dir_defn))
     assert_type(bound, _schema._FixedDir | fss.MismatchErr)
+
+    class Concrete(_schema.Schema):
+        schema = {"child": {"value": "value.txt"}}
+
+    assert_type(Concrete.bind(Path("root")), Concrete | fss.MismatchErr)
+    assert_type(Concrete.child, type)
+    assert Concrete.child.value  # pyright: ignore[reportUnknownMemberType]
+
+    class Repeated(_schema.Schema):
+        schema = {_schema.Dir(fmt="run-{n:d}", alias="runs"): Concrete}
+
+    assert_type(Repeated.runs, type)
+
+    def narrow_schema_type(candidate: object) -> None:
+        if _schema._is_schema_type(candidate):
+            assert_type(candidate, type[_schema.Schema])
+
+    narrow_schema_type(Concrete)
 
     def decode(path: Path) -> str: ...
 

@@ -26,7 +26,9 @@ All names in this table are available from `fs_schema`.
 ## Defining schemas
 
 Subclass `Schema` and define a `schema` mapping. Nested mappings represent
-nested directories.
+nested directories. A Schema subclass has exactly one direct Schema base.
+Schema subclasses are layout declarations; do not add methods, mixins, custom
+metaclasses, or other behavior, as those uses are unsupported.
 
 ```python
 @dataclass
@@ -67,7 +69,15 @@ class Delivery(fss.Schema):
 | `FILES: ["file.ext", File(...)]` | Files in the current directory |
 
 Only `name` is positional in `File` and `Dir`. All other options are
-keyword-only. Every declaration requires `name`, `fmt`, or `match`.
+keyword-only. Every declaration requires `name`, `fmt`, or `match`. For a fixed
+directory, an explicit `ChildSchema` is both the nested layout and its exact
+runtime type. A fixed inline mapping receives one private `Schema` subtype with
+stable identity, visible through recursive class-level navigation.
+
+`Dir(..., schema=Required)` checks the right-hand-side layout when the
+containing Schema is defined. It must contain the required declarations
+recursively; extra declarations are fine. `Required` is not merged, and the
+right-hand side still controls the directory's children and runtime type.
 
 ### Templates, matching, and cardinality
 
@@ -100,8 +110,8 @@ day_decl = fss.Dir(alias="days", fmt=fss.dt("%Y-%m-%d"), min=0)
 
 ### Inheritance and replacement
 
-Inheritance merges layouts at the same root. Base layouts are merged in Python
-MRO order, followed by the subclass layout.
+Ordinary inheritance starts with the direct base's effective layout. The
+subclass may add declarations or replace inherited ones.
 
 ```python
 class AuditedDelivery(Delivery):
@@ -110,10 +120,10 @@ class AuditedDelivery(Delivery):
     }
 ```
 
-Within one parent, a declaration's identity is its exact `name`, then its
-`alias`, then its `fmt`. Both the identity kind and value matter. A later entry
-with the same identity replaces the whole earlier entry, even if its node type
-changes.
+Within one directory, distinct children cannot collide by alias, exact name,
+normalized name, or `fmt`; ambiguous layouts fail when the class is defined.
+Aliases, names, and formats identify inherited declarations for whole-node
+replacement. Match-only declarations without one of those identities append.
 
 ### Declaration API
 
@@ -151,8 +161,12 @@ The mapping table above defines the valid `Layout` key-value pairings.
 
 ## Applying schemas
 
-`bind` checks an existing tree. It returns the requested schema on success or a
-`MismatchErr` value on failure.
+`bind` checks an existing directory tree. It returns an ordinary instance of the
+exact requested schema class on success (`type(result) is Delivery` below), or a
+`MismatchErr` value on failure. Fixed directories backed by explicit or inline
+schemas have that exact Schema runtime type. Repeated directories bind to
+collections whose elements are ordinary directory matches with captures and
+child navigation.
 
 ```python
 result = Delivery.bind("/srv/incoming/delivery-42")
@@ -287,17 +301,18 @@ class Match(Located, Protocol):
 The concrete `kwargs` mapping also supports capture access by attribute, as
 shown above.
 
-### Static typing of generated children
+### Static typing of dynamic children
 
-Generated child names are available at runtime, but static types remain broad:
-
-- Class-level child access returns `type[Schema]`.
-- Instance child access returns a union of possible child kinds.
-- `Delivery.RootT` is `type[SchemaRoot[Schema]]`.
+Dynamically resolved class children use the bare `type` boundary. This is broad
+enough for direct recursive navigation such as `Root.inline.leaf`, but it cannot
+preserve whether each dynamically named child is a file class, collection class,
+or exact generated `Schema` subtype. Instance child access likewise returns a
+union of possible child kinds. `Delivery.RootT` remains
+`type[SchemaRoot[Schema]]`.
 
 Use an explicit `fss.SchemaRoot[Delivery]` annotation when the schema parameter
-must remain exact. Do not expect a type checker to infer exact generated child
-or loader-result types from attribute names.
+must remain exact. Fixed Schema-backed values retain their exact classes; only
+dynamic static lookup loses that precision.
 
 ## Creating with schemas
 
