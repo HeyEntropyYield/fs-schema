@@ -79,14 +79,14 @@ containing Schema is defined. It must contain the required declarations
 recursively; extra declarations are fine. `Required` is not merged, and the
 right-hand side still controls the directory's children and runtime type.
 
-### Templates, matching, and cardinality
+### Templates, matching, and allowed match counts
 
 | Option | Meaning |
 | --- | --- |
 | `name` | Exact basename. It cannot be combined with `fmt`. |
 | `fmt` | Full-basename parse and format template, validated when declared. |
 | `match` | Regex selector on full basename with `re.fullmatch`, compiled when declared. |
-| `min` | Minimum count; defaults to `1`. Use `0` for an optional declaration. |
+| `min` | Minimum count; defaults to `1`. Use `0` for an optional `fmt`/`match` collection. |
 | `max` | Maximum count. Exact names require `min=max=1`; templates are unbounded. |
 | `alias` | Name used for child access in Python. |
 | `sort` | Key function for template matches. |
@@ -192,8 +192,9 @@ planned_delivery = Delivery.relative_to("/srv/incoming/delivery-42")
 validated_from_plan = planned_delivery.bind()
 ```
 
-Binding checks declared structure and cardinality at that moment. It ignores
-undeclared entries, is not a filesystem lock, and returns the first mismatch.
+Binding checks declared structure and allowed match counts at that moment. It
+ignores undeclared entries, is not a filesystem lock, and returns the first
+mismatch.
 
 ```text
 Schema.bind(root: str | os.PathLike[str] | Located) -> Self | MismatchErr
@@ -261,11 +262,29 @@ lookup for names such as `"items"` that collide with mapping methods.
 
 | Collection operation | Result |
 | --- | --- |
-| `collection[index]` | One `Match` |
-| `collection[slice]` | Another collection |
-| `filter(predicate)` | Lazy matching iterator, in collection order |
-| `find(predicate)` | The first matching item, or `None` |
+| `collection[index]` | One `Match`; normal sequence indexing may raise `IndexError` |
+| `collection[slice]` | Another collection of the same concrete type |
+| `filter(predicate)` | Accepted matches as the same concrete collection type, in collection order |
+| `find(predicate)` | The first accepted match, or `None` |
+| `where(*args, **kwargs)` | Matches whose captures have the positional prefix and named subset |
+| `get(index=0, default=...)` | Safely indexed match, or the supplied default when out of range |
 | `format(*args, **kwargs)` | Planned fixed file or recursively navigable fixed directory (format-backed collections only) |
+
+A predicate receives the pair `(match.args, match.kwargs)`. Filtering returns a
+materialized result that keeps collection capabilities such as slicing and, for
+format-backed collections, `format()`. Empty results are collections too.
+
+`where` combines all supplied constraints. Positional values match a capture
+prefix, with `None` acting as a wildcard for that position; named values match a
+subset, where `None` matches an optional capture value. Unknown named capture
+fields raise `KeyError`, even on an empty planned collection. More positional
+values than a match has simply reject that match. Calling `where()` without
+constraints returns an equivalent collection.
+
+`get` accepts positive and negative indexes. With no explicit default, an
+out-of-range index returns `None`; an explicit `None` or other default is
+returned unchanged. Other errors are not hidden. This makes one-result queries
+concise without changing ordinary sequence indexing.
 
 ```python
 def is_selected_day(args, kwargs):
@@ -273,7 +292,22 @@ def is_selected_day(args, kwargs):
 
 selected_days = days.filter(is_selected_day)
 selected_day = days.find(is_selected_day)
+selected_by_capture = days.where(day=datetime(2026, 9, 10))
+selected_by_capture_or_none = selected_by_capture.get()
 ```
+
+```text
+filter(predicate, /) -> Self
+find(predicate, /) -> Match | None
+where(*args: str | int | datetime | None,
+      **kwargs: str | int | datetime | None) -> Self
+get(index: int = 0) -> Match | None
+get(index: int, default: T) -> Match | T
+get(*, default: T) -> Match | T
+```
+
+Capture names are dynamic, so static checking does not try to narrow keyword
+names passed to `where`.
 
 Formatting a format-backed collection plans one concrete path without I/O or
 captures. A formatted directory remains recursively navigable, and a formatted

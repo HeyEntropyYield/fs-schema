@@ -78,6 +78,13 @@ def test_fixed_and_template_selector_matrix_with_regex_captures(tmp_path: Path) 
     bad = bind_defns(root, (File(name="fixed.txt", match=r"other"),))
     assert isinstance(bad, MismatchErr) and "does not match" in str(bad)
 
+    planned = bind_defns(root, (File(fmt="absent-{part:d}.txt", match=r"absent-[0-9]+[.]txt", min=0),))
+    assert isinstance(planned, _FixedDir)
+    planned_collection = planned[0]
+    assert isinstance(planned_collection, _Template)
+    with pytest.raises(KeyError, match="missing"):
+        planned_collection.where(missing=None)
+
 
 def test_directory_matches_are_ordinary_dir_matches_with_captures(tmp_path: Path) -> None:
     class Child(Schema):

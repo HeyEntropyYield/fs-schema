@@ -46,7 +46,18 @@ def check() -> None:
     assert_type(plain[:], _schema._Matches[_schema._FileMatch[object], _schema.File[object]])
     assert_type(template[:], _schema._Template[_schema._FileMatch[object], _schema.File[object]])
     assert_type(template.find(capture_predicate), _schema._FileMatch[object] | None)
-    assert_type(template.filter(capture_predicate), Iterator[_schema._FileMatch[object]])
+    assert_type(plain.filter(capture_predicate), _schema._Matches[_schema._FileMatch[object], _schema.File[object]])
+    assert_type(
+        template.filter(capture_predicate),
+        _schema._Template[_schema._FileMatch[object], _schema.File[object]],
+    )
+    assert_type(template.where(part=1), _schema._Template[_schema._FileMatch[object], _schema.File[object]])
+    assert_type(template.where(part=None), _schema._Template[_schema._FileMatch[object], _schema.File[object]])
+    assert_type(template.get(), _schema._FileMatch[object] | None)
+    assert_type(template.get(-1), _schema._FileMatch[object] | None)
+    assert_type(template.get(4, "missing"), _schema._FileMatch[object] | str)
+    assert_type(template.get(default=1), _schema._FileMatch[object] | int)
+    assert_type(template.get(4, None), _schema._FileMatch[object] | None)
     assert_type(template.format(part=1), _schema._FixedFile[object])
     assert_type(text_template.format(), _schema._FixedFile[str])
     assert_type(dir_template.format(), _schema._FixedDir)

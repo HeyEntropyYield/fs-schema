@@ -43,6 +43,7 @@ _L = TypeVar("_L")
 _L_co = TypeVar("_L_co", covariant=True, default=object)
 # Template collections only produce their concrete Match subtype.
 _M_co = TypeVar("_M_co", bound="Match", covariant=True)
+_Default = TypeVar("_Default")
 
 
 ## Forward-safe cycle vocabulary
@@ -95,6 +96,13 @@ class _Selector:
         if self._match is not None and self._match.fullmatch(basename) is None:
             raise ValueError(f"formatted basename does not match {self._match.pattern!r}: {basename!r}")
         return basename
+
+    def capture_names(self) -> frozenset[str]:
+        if self._fmt is not None:
+            return frozenset(field.name for field in self._fmt.fields if not field.positional)
+        if self._match is not None:
+            return frozenset(self._match.groupindex)
+        return frozenset()
 
 
 ## User schema file/dir declarations
@@ -298,6 +306,27 @@ def _normalize_name(name: str) -> str:
 CapturePredicate: TypeAlias = Callable[[tuple[CaptureField, ...], CaptureMap], bool]
 
 
+def _capture_values_match(
+    captured_args: tuple[CaptureField, ...],
+    captured_kwargs: CaptureMap,
+    args: tuple[CaptureField, ...],
+    kwargs: Mapping[str, CaptureField],
+) -> bool:
+    if len(args) > len(captured_args):
+        return False
+    if any(expected is not None and actual != expected for actual, expected in zip(captured_args, args, strict=False)):
+        return False
+    return all(captured_kwargs[name] == value for name, value in kwargs.items())
+
+
+@final
+class _MissingDefault:
+    __slots__: Final = ()
+
+
+_MISSING_DEFAULT: Final = _MissingDefault()
+
+
 class _CaptureState:
     _captures: ParsedCaptures
 
@@ -342,11 +371,38 @@ class _Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
     def __len__(self) -> int:
         return len(self._matches)
 
-    def filter(self, predicate: CapturePredicate) -> Iterator[_M_co]:
-        return (match for match in self._matches if predicate(match.args, match.kwargs))
+    def filter(self, predicate: CapturePredicate, /) -> Self:
+        return type(self)(
+            self.path,
+            tuple(match for match in self._matches if predicate(match.args, match.kwargs)),
+            self.defn,
+        )
 
-    def find(self, predicate: CapturePredicate) -> _M_co | None:
-        return next(self.filter(predicate), None)
+    def find(self, predicate: CapturePredicate, /) -> _M_co | None:
+        return next((match for match in self._matches if predicate(match.args, match.kwargs)), None)
+
+    def where(self, *args: CaptureField, **kwargs: CaptureField) -> Self:
+        _validate_capture_names(self.defn, kwargs)
+        return self.filter(
+            lambda captured_args, captured_kwargs: _capture_values_match(captured_args, captured_kwargs, args, kwargs)
+        )
+
+    @overload
+    def get(self, index: int = 0) -> _M_co | None: ...
+
+    @overload
+    def get(self, index: int, default: _Default) -> _M_co | _Default: ...
+
+    @overload
+    def get(self, *, default: _Default) -> _M_co | _Default: ...
+
+    def get(self, index: int = 0, default: _Default | _MissingDefault = _MISSING_DEFAULT) -> _M_co | _Default | None:
+        try:
+            return self._matches[index]
+        except IndexError:
+            if default is _MISSING_DEFAULT:
+                return None
+            return typing.cast(_Default, default)
 
 
 class _Template(_Matches[_M_co, _Defn_co], Generic[_M_co, _Defn_co]):
@@ -455,6 +511,17 @@ def _node(defn: _Defn) -> Node:
 
 def _format_node(node: Node, *args: FmtField, **kwargs: FmtField) -> str:
     return node._selector.format(*args, **kwargs)  # pyright: ignore[reportPrivateUsage]
+
+
+def _capture_names(defn: _Defn) -> frozenset[str]:
+    return _node(defn)._selector.capture_names()  # pyright: ignore[reportPrivateUsage]
+
+
+def _validate_capture_names(defn: _Defn, kwargs: Mapping[str, CaptureField]) -> None:
+    capture_names = _capture_names(defn)
+    for name in kwargs:
+        if name not in capture_names:
+            raise KeyError(name)
 
 
 def _is_safe_basename(name: str) -> bool:
