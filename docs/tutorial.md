@@ -336,7 +336,7 @@ values.
 
 - `bind()` is a structural snapshot, not a lock. Another process can mutate
   the tree immediately afterward; use immutable roots or locking when needed.
-- Binding checks declared names, cardinality, and nested shape. Model decoding
+- Binding checks declared names, allowed match counts, and nested shape. Model decoding
   is separate; annotate loaded values with their declared model type.
 - `relative_to()` and `format()` plan paths. Failed writes can leave a
   partial root; use a temporary directory plus rename, or idempotent writes,

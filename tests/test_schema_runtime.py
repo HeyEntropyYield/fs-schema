@@ -7,7 +7,7 @@ import pytest
 from beartype.roar import BeartypeCallHintParamViolation
 
 from fs_schema import Match
-from fs_schema._fmt import CaptureMap, ParsedCaptures
+from fs_schema._fmt import CaptureField, CaptureMap, ParsedCaptures
 from fs_schema._schema import (
     Dir,
     File,
@@ -17,6 +17,7 @@ from fs_schema._schema import (
     _FixedDir,
     _FixedFile,
     _Matches,
+    _MissingDefault,
     _Template,
 )
 
@@ -61,9 +62,95 @@ def test_matches_and_collections_keep_observed_capture_values(tmp_path: Path) ->
     assert dict(first.kwargs) == {"part": 2}
     assert collection.defn is defn and tuple(collection) == (first, second)
     assert isinstance(sliced, _Template) and tuple(sliced) == (first,)
-    assert list(collection.filter(lambda _args, kwargs: kwargs["part"] == 3)) == [second]
+    filtered = collection.filter(lambda _args, kwargs: kwargs["part"] == 3)
+    empty = collection.filter(lambda _args, _kwargs: False)
+    assert isinstance(filtered, _Template) and tuple(filtered) == (second,)
+    assert isinstance(empty, _Template) and not empty
+    assert filtered.path == collection.path and filtered.defn is defn
+    assert empty.path == collection.path and empty.defn is defn
     assert collection.find(lambda _args, kwargs: kwargs["part"] == 2) is first
     assert collection.find(lambda _args, _kwargs: False) is None
+
+
+def test_collection_queries_preserve_shape_order_and_capture_semantics(tmp_path: Path) -> None:
+    defn = File(match=r"(?P<kind>[^-]+)(?:-(?P<tag>[^-]+))?(?:-([^-]+))?", min=0)
+    first = _FileMatch(
+        tmp_path / "image",
+        ParsedCaptures((None,), CaptureMap({"kind": "image", "tag": None})),
+        defn,
+    )
+    second = _FileMatch(
+        tmp_path / "image-raw-tail",
+        ParsedCaptures(("tail",), CaptureMap({"kind": "image", "tag": "raw"})),
+        defn,
+    )
+    third = _FileMatch(
+        tmp_path / "data-raw-tail",
+        ParsedCaptures(("tail",), CaptureMap({"kind": "data", "tag": "raw"})),
+        defn,
+    )
+    collection = _Matches(tmp_path, (first, second, third), defn)
+    calls: list[tuple[tuple[CaptureField, ...], dict[str, CaptureField]]] = []
+
+    def select_image(args: tuple[CaptureField, ...], kwargs: CaptureMap) -> bool:
+        calls.append((args, dict(kwargs)))
+        return kwargs["kind"] == "image"
+
+    filtered = collection.filter(select_image)
+    rejected = collection.filter(lambda _args, _kwargs: False)
+    assert type(filtered) is _Matches and tuple(filtered) == (first, second)
+    assert type(rejected) is _Matches and not rejected
+    assert filtered.path == collection.path and filtered.defn is defn
+    assert calls == [
+        ((None,), {"kind": "image", "tag": None}),
+        (("tail",), {"kind": "image", "tag": "raw"}),
+        (("tail",), {"kind": "data", "tag": "raw"}),
+    ]
+    assert collection.find(select_image) is first
+    assert collection.find(lambda _args, _kwargs: False) is None
+
+    unconstrained = collection.where()
+    assert type(unconstrained) is _Matches and tuple(unconstrained) == tuple(collection)
+    assert tuple(collection.where("tail")) == (second, third)
+    assert tuple(collection.where(None)) == (first, second, third)
+    assert tuple(collection.where(kind="image")) == (first, second)
+    assert tuple(collection.where(tag=None)) == (first,)
+    assert tuple(collection.where("tail", kind="image", tag="raw")) == (second,)
+    assert not collection.where("tail", "extra")
+
+    planned = _Matches(tmp_path, (), defn)
+    captureless = _Matches(tmp_path, (), File(match="value", min=0))
+    fixed = _Matches(tmp_path, (), File(name="value"))
+    with pytest.raises(KeyError, match="missing"):
+        collection.where(missing="value")
+    with pytest.raises(KeyError, match="missing"):
+        planned.where(missing=None)
+    with pytest.raises(KeyError, match="missing"):
+        captureless.where(missing=None)
+    with pytest.raises(KeyError, match="missing"):
+        fixed.where(missing=None)
+
+    marker = object()
+    assert collection.get() is first
+    assert collection.get(1) is second
+    assert collection.get(-1) is third
+    assert collection.get(30) is None
+    assert collection.get(30, None) is None
+    assert collection.get(30, marker) is marker
+    distinct_missing_default = _MissingDefault()
+    assert collection.get(30, distinct_missing_default) is distinct_missing_default
+    assert collection.get(default=marker) is first
+    assert planned.get(default=marker) is marker
+
+
+def test_where_none_is_a_positional_wildcard(tmp_path: Path) -> None:
+    defn = File(fmt="{}_{}.txt", min=0)
+    first = _FileMatch(tmp_path / "first_000000.txt", ParsedCaptures(("first", "000000"), CaptureMap({})), defn)
+    second = _FileMatch(tmp_path / "second_000001.txt", ParsedCaptures(("second", "000001"), CaptureMap({})), defn)
+    collection = _Matches(tmp_path, (first, second), defn)
+
+    assert tuple(collection.where(None, "000000")) == (first,)
+    assert tuple(collection.where("second", None)) == (second,)
 
 
 def test_matches_and_templates_are_distinct_but_constructors_copy_collections(tmp_path: Path) -> None:
