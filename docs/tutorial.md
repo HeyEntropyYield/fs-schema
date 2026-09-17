@@ -271,7 +271,7 @@ def curate(
     return output.bind()
 ```
 
-Each `format()` call returns a planned `SchemaRoot[Schema]`: it computes a
+Each `format()` call returns a planned fixed directory or file: it computes a
 concrete path but does not claim that path exists or return a bound match. The
 formatted file's `put()` method writes the converted bytes and creates missing
 parents. The final `bind()` checks the completed output shape.

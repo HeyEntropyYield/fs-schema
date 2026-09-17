@@ -26,9 +26,11 @@ def check() -> None:
     template = _schema._Template(Path("root"), (match,), _schema.File(fmt="part-{part:d}"))
     dir_match = _schema._DirMatch(Path("directory"), _fmt.ParsedCaptures((), _fmt.CaptureMap({})), (), dir_defn)
     directories = _schema._Matches(Path("root"), (dir_match,), dir_defn)
+    dir_template = _schema._Template(Path("root"), (dir_match,), dir_defn)
     directory = _schema._FixedDir(Path("root"), (fixed, plain, template, directories), dir_defn)
     listing: CacheSeq[Path] = CacheSeq(lambda: [Path("part-1")])
     text_defn: _schema.File[str] = _schema.File(name="text", schema=lambda path: path.name)
+    text_template = _schema._Template(Path("root"), (), text_defn)
     aliased_text = _schema._aliased_file("text_alias", text_defn)
 
     accepts_located(fixed)
@@ -45,6 +47,9 @@ def check() -> None:
     assert_type(template[:], _schema._Template[_schema._FileMatch[object], _schema.File[object]])
     assert_type(template.find(capture_predicate), _schema._FileMatch[object] | None)
     assert_type(template.filter(capture_predicate), Iterator[_schema._FileMatch[object]])
+    assert_type(template.format(part=1), _schema._FixedFile[object])
+    assert_type(text_template.format(), _schema._FixedFile[str])
+    assert_type(dir_template.format(), _schema._FixedDir)
     assert_type(loaded.load(), int | Exception)
     assert_type(directories.defn, _schema._DirDefn)
     assert_type(directories[0], _schema._DirMatch)
@@ -53,6 +58,8 @@ def check() -> None:
     assert_type(_schema._bind_matches(text_defn, listing, {}), Sequence[_schema._FileMatch[str]])
     assert_type(_schema._bind_matches(dir_defn, listing, {}), Sequence[_schema._DirMatch] | fss.MismatchErr)
     assert_type(_schema._bind_fixed(Path("text"), text_defn, {}), _schema._FixedFile[str])
+    assert_type(_schema._plan_fixed(Path("text"), text_defn), _schema._FixedFile[str])
+    assert_type(_schema._plan_fixed(Path("directory"), dir_defn), _schema._FixedDir)
     assert_type(_schema._bind_fixed(Path("directory"), dir_defn, {}), _schema._FixedDir | fss.MismatchErr)
     assert_type(_schema._bind_children(Path("root"), dir_defn, {}), tuple[_schema.Child, ...] | fss.MismatchErr)
     bound = _schema.bind_defns(Path("root"), (file_defn, dir_defn))
@@ -61,7 +68,15 @@ def check() -> None:
     class Concrete(_schema.Schema):
         schema = {"child": {"value": "value.txt"}}
 
+    planned = Concrete.relative_to(Path("root"))
+    assert_type(planned, _schema.SchemaRoot[Concrete])
+    assert_type(planned.bind(), Concrete | fss.MismatchErr)
+    assert_type(Concrete.RootT, type[_schema.SchemaRoot[_schema.Schema]])
+    root_type: type[_schema.SchemaRoot[_schema.Schema]] = Concrete.RootT
+    assert_type(root_type, type[_schema.SchemaRoot[_schema.Schema]])
     assert_type(Concrete.bind(Path("root")), Concrete | fss.MismatchErr)
+    if isinstance(bound_concrete := Concrete.bind(Path("root")), Concrete):
+        assert_type(bound_concrete.root(), _schema.SchemaRoot[Concrete])
     assert_type(Concrete.child, type)
     assert Concrete.child.value  # pyright: ignore[reportUnknownMemberType]
 

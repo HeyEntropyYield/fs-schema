@@ -39,6 +39,8 @@ print(contents.title)
 Binding validates an existing layout. Templates are collections; indexing selects
 a concrete match whose parsed captures are available through `.args` and
 `.kwargs`. `relative_to()` plans output paths without claiming they exist.
+Format-backed collections plan concrete files or recursively navigable
+directories; only the top-level plan binds the whole schema.
 
 <details>
 <summary>Expanded quickstart</summary>

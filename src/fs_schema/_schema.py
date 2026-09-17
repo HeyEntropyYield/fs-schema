@@ -88,6 +88,14 @@ class _Selector:
             CaptureMap(matched.groupdict()),
         )
 
+    def format(self, *args: FmtField, **kwargs: FmtField) -> str:
+        if self._fmt is None:
+            raise TypeError("declaration has no formatter")
+        basename = self._fmt.format(*args, **kwargs)
+        if self._match is not None and self._match.fullmatch(basename) is None:
+            raise ValueError(f"formatted basename does not match {self._match.pattern!r}: {basename!r}")
+        return basename
+
 
 ## User schema file/dir declarations
 
@@ -206,7 +214,7 @@ class _DirDefn:
 
 
 _Defn: TypeAlias = File[object] | _DirDefn
-_Defn_co = TypeVar("_Defn_co", covariant=True, default=_Defn)
+_Defn_co = TypeVar("_Defn_co", bound=_Defn, covariant=True, default=_Defn)
 
 
 ## Runtime values
@@ -342,8 +350,18 @@ class _Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
 
 
 class _Template(_Matches[_M_co, _Defn_co], Generic[_M_co, _Defn_co]):
-    def format(self, *args: FmtField, **kwargs: FmtField) -> "SchemaRoot[Schema]":
-        raise NotImplementedError
+    @overload
+    def format(self: "_Template[_FileMatch[_L], File[_L]]", *args: FmtField, **kwargs: FmtField) -> _FixedFile[_L]: ...
+
+    @overload
+    def format(self: "_Template[_DirMatch, _DirDefn]", *args: FmtField, **kwargs: FmtField) -> "_FixedDir": ...
+
+    def format(self, *args: FmtField, **kwargs: FmtField) -> "_FixedFile[object] | _FixedDir":
+        node = _node(self.defn)
+        basename = _format_node(node, *args, **kwargs)
+        if not _is_safe_basename(basename):
+            raise ValueError(f"formatted name must be a basename: {basename!r}")
+        return _plan_fixed(self.path / basename, self.defn)
 
 
 if TYPE_CHECKING:
@@ -406,8 +424,41 @@ class _DirMatch(_CaptureState, _FixedDir):
         self._captures: ParsedCaptures = captures
 
 
+def _plan_children(path: Path, dir_defn: _DirDefn) -> tuple[Child, ...]:
+    return tuple(_plan_dir_defn(path, defn) for defn in dir_defn.defns)
+
+
+def _plan_dir_defn(path: Path, defn: _Defn) -> Child:
+    node = _node(defn)
+    if node.name:
+        return _plan_fixed(path / node.name, defn)
+    return _Template(path, (), defn) if node.fmt is not None else _Matches(path, (), defn)
+
+
+@overload
+def _plan_fixed(path: Path, defn: File[_L]) -> _FixedFile[_L]: ...
+
+
+@overload
+def _plan_fixed(path: Path, defn: _DirDefn) -> _FixedDir: ...
+
+
+def _plan_fixed(path: Path, defn: _Defn) -> _FixedFile[object] | _FixedDir:
+    if isinstance(defn, File):
+        return _FixedFile(path, defn)
+    return _FixedDir(path, _plan_children(path, defn), defn)
+
+
 def _node(defn: _Defn) -> Node:
     return defn if isinstance(defn, File) else defn.defn
+
+
+def _format_node(node: Node, *args: FmtField, **kwargs: FmtField) -> str:
+    return node._selector.format(*args, **kwargs)  # pyright: ignore[reportPrivateUsage]
+
+
+def _is_safe_basename(name: str) -> bool:
+    return bool(name) and name not in {".", ".."} and "\0" not in name and "/" not in name and "\\" not in name
 
 
 def _validate_node(node: Node) -> tuple[_Selector, int | None]:
@@ -565,7 +616,7 @@ def _invalid_schema(class_name: str, detail: str) -> TypeError:
 
 
 def _validate_schema_node(class_name: str, key: object, node: Node) -> None:
-    if node.name and (node.name in {".", ".."} or "\0" in node.name or "/" in node.name or "\\" in node.name):
+    if node.name and not _is_safe_basename(node.name):
         raise _invalid_schema(class_name, f"declaration {key!r} name must be a basename")
     if node.alias and (not node.alias.isidentifier() or keyword.iskeyword(node.alias) or node.alias.startswith("_")):
         raise _invalid_schema(class_name, f"declaration {key!r} alias must be a public identifier")
@@ -798,12 +849,43 @@ class SchemaCls(type):
 
     @property
     def RootT(cls) -> "type[SchemaRoot[Schema]]":
-        raise NotImplementedError
+        if not _is_schema_type(cls):
+            raise AttributeError("RootT")
+        return _root_type_for(cls)
 
 
 class SchemaRoot(_FixedDir, Generic[_S]):
+    _schema_type: type[_S]
+
     def bind(self) -> "_S | MismatchErr":
-        raise NotImplementedError
+        return self._schema_type.bind(self.path)
+
+
+def _is_root_type_for(value: object, schema_type: type[_S]) -> TypeIs[type[SchemaRoot[_S]]]:
+    if not isinstance(value, type) or not issubclass(value, SchemaRoot):
+        return False
+    namespace: Mapping[str, object] = value.__dict__
+    return namespace.get("_schema_type") is schema_type
+
+
+def _root_type_for(schema_type: type[_S]) -> type[SchemaRoot[_S]]:
+    cached = vars(schema_type).get("_root_type")
+    if _is_root_type_for(cached, schema_type):
+        return cached
+
+    generated = type(
+        f"{schema_type.__name__}Root",
+        (SchemaRoot,),
+        {
+            "__module__": schema_type.__module__,
+            "__qualname__": f"{schema_type.__qualname__}.RootT",
+            "_schema_type": schema_type,
+        },
+    )
+    if not _is_root_type_for(generated, schema_type):
+        raise AssertionError("generated SchemaRoot has an invalid type")
+    type.__setattr__(schema_type, "_root_type", generated)
+    return generated
 
 
 class Schema(_FixedDir, metaclass=SchemaCls):
@@ -818,7 +900,8 @@ class Schema(_FixedDir, metaclass=SchemaCls):
 
     @classmethod
     def relative_to(cls: type[_S], root: PathIsh) -> "SchemaRoot[_S]":
-        raise NotImplementedError
+        path = Path(root)
+        return _root_type_for(cls)(path, _plan_children(path, cls._schema_defn), cls._schema_defn)
 
     @classmethod
     def bind(cls: type[_S], root: PathIsh | Located) -> "_S | MismatchErr":
@@ -828,4 +911,4 @@ class Schema(_FixedDir, metaclass=SchemaCls):
         return cls(path, children, cls._schema_defn)
 
     def root(self) -> "SchemaRoot[Self]":
-        raise NotImplementedError
+        return type(self).relative_to(self.path)
