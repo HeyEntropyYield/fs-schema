@@ -265,7 +265,7 @@ lookup for names such as `"items"` that collide with mapping methods.
 | `collection[slice]` | Another collection |
 | `filter(predicate)` | Lazy matching iterator, in collection order |
 | `find(predicate)` | The first matching item, or `None` |
-| `format(*args, **kwargs)` | A planned `SchemaRoot[Schema]` (format-backed templates only) |
+| `format(*args, **kwargs)` | Planned fixed file or recursively navigable fixed directory (format-backed collections only) |
 
 ```python
 def is_selected_day(args, kwargs):
@@ -275,7 +275,10 @@ selected_days = days.filter(is_selected_day)
 selected_day = days.find(is_selected_day)
 ```
 
-Formatting a format-backed collection plans a path without I/O. Regex-only collections and individual matches are not formattable.
+Formatting a format-backed collection plans one concrete path without I/O or
+captures. A formatted directory remains recursively navigable, and a formatted
+file retains its read, load, and put methods. Regex-only collections and
+individual matches are not formattable.
 
 ```python
 planned_day = days.format(day=datetime(2026, 9, 11))
@@ -317,8 +320,10 @@ dynamic static lookup loses that precision.
 ## Creating with schemas
 
 `relative_to` creates a planned layout without checking the filesystem. Fixed
-children already have paths. `format` turns a template into a concrete planned
-root. Writing and validation remain separate.
+children already have paths. Planned collections are empty until binding; a
+format-backed collection can produce one concrete planned child, while a
+regex-only collection cannot be concretized without matching the filesystem.
+Writing and validation remain separate.
 
 ```python
 planned: fss.SchemaRoot[Delivery] = Delivery.relative_to(
@@ -339,6 +344,11 @@ created = planned.bind()
 `SchemaRoot[Delivery]` keeps the schema parameter, so `bind()` returns
 `Delivery | MismatchErr`. Calling `root()` on a bound schema creates a plan at
 the same path and intentionally drops the validation guarantee.
+
+Every descendant of a rooted plan is also planned and derived from the same
+canonical declarations. Only the top-level `SchemaRoot` retains the schema/root
+token and exposes `bind()`; descendants do not independently bind or return to
+the root. Keep the root plan when that transition is needed.
 
 ```python
 reopened_plan: fss.SchemaRoot[Delivery] = delivery.root()
