@@ -268,7 +268,7 @@ class _Fixed:
 
 
 def _load_model(path: Path, schema: type[_L_co]) -> _L_co | Exception:
-    return Exception(f"model schema codec connector is not connected for {path} ({schema.__name__})")
+    return load(path, schema)
 
 
 class _FixedFile(_Fixed, Generic[_L_co]):

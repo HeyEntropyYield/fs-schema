@@ -86,14 +86,14 @@ Validation and loading are additive same-root states: they strengthen what is
 known about an existing directory. Curation creates a different dataset, so it
 gets a different root.
 
-Install the model codecs used below with:
+Install the JSON model conversion used below with:
 
 ```bash
 uv add "fs-schema[mashumaro,orjson]"
 ```
 
 The models remain ordinary application dataclasses. File declarations attach
-them to codec-aware locations.
+them to JSON locations; the `orjson` extra keeps the faster implementation.
 
 ```python
 @dataclass
@@ -210,8 +210,8 @@ def delivery_parts(delivery: DownloadedDelivery) -> tuple[Path, ...]:
     )
 ```
 
-The declared codec supplies a `DeliveryManifest`. Annotate the loaded value;
-runtime type checking enforces that expectation.
+The declared JSON model supplies a `DeliveryManifest`. `raise_exn` raises a
+decoding error while preserving the successful model type.
 
 ## Strengthen the same root with validation
 
@@ -223,7 +223,7 @@ fixed report file, and binds the stronger schema at the same path.
 def validate(
     delivery: DownloadedDelivery,
 ) -> ValidatedDelivery | fss.MismatchErr:
-    manifest: DeliveryManifest = delivery.manifest.load()
+    manifest: DeliveryManifest = fss.raise_exn(delivery.manifest.load())
 
     parts = delivery_parts(delivery)
     if len(parts) != manifest.expected_parts:
@@ -248,8 +248,8 @@ def curate(
     delivery: ValidatedDelivery,
     target: Path,
 ) -> CuratedDataset | fss.MismatchErr:
-    manifest: DeliveryManifest = delivery.manifest.load()
-    validation: ValidationReport = delivery.validation.load()
+    manifest: DeliveryManifest = fss.raise_exn(delivery.manifest.load())
+    validation: ValidationReport = fss.raise_exn(delivery.validation.load())
 
     if len(delivery_parts(delivery)) != validation.parts:
         return fss.MismatchErr("delivery changed after validation")
@@ -336,8 +336,8 @@ values.
 
 - `bind()` is a structural snapshot, not a lock. Another process can mutate
   the tree immediately afterward; use immutable roots or locking when needed.
-- Binding checks declared names, allowed match counts, and nested shape. Model decoding
-  is separate; annotate loaded values with their declared model type.
+- Binding checks declared names, allowed match counts, and nested shape. Model
+  decoding is separate; handle its exception value or use `raise_exn`.
 - `relative_to()` and `format()` plan paths. Failed writes can leave a
   partial root; use a temporary directory plus rename, or idempotent writes,
   when publication must be atomic.

@@ -21,6 +21,7 @@ from fs_schema import (
     exists_opt,
     is_mismatch,
     put,
+    raise_exn,
     raise_mismatch,
 )
 
@@ -41,6 +42,7 @@ def test_public_exports_are_explicit_end_user_api() -> None:
         "exists_opt": exists_opt,
         "is_mismatch": is_mismatch,
         "put": put,
+        "raise_exn": raise_exn,
         "raise_mismatch": raise_mismatch,
     }
     assert all(value is vars(fs_schema)[name] for name, value in explicit_exports.items())
@@ -105,6 +107,7 @@ warnings.simplefilter("error", BeartypeClawDecorWarning)
 
 modules = (
     "fs_schema._fmt",
+    "fs_schema._mashumaro_json",
     "fs_schema._ops",
     "fs_schema._schema",
     "fs_schema._types",

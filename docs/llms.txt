@@ -15,8 +15,8 @@ Core state model:
 - Attribute/index access: generated, schema-aware traversal.
 - `fmt`, `match`, `min`, `max`, `sort`: repeated-node matching.
 - `Match.args`, `Match.kwargs`, `filter`, `find`, `where`, `get`: collection queries and captured-value access.
-- `put`, `load`, `path`: filesystem I/O.
-- Optional mashumaro integration: plain dataclass JSON/YAML/TOML/MessagePack.
+- `put`, `load`, `raise_exn`, `path`: filesystem I/O.
+- Optional Mashumaro integration: dataclass JSON, with an optional `orjson` backend.
 
 `Schema` values are validated filesystem states. `SchemaRoot[T]` values are
 rooted write destinations not yet validated.

@@ -187,7 +187,7 @@ def test_callable_loading_preserves_generic_runtime_declaration(tmp_path: Path) 
     model_file = model[0]
     assert isinstance(model_file, _FixedFile)
     failure = model_file.load()
-    assert isinstance(failure, Exception) and "codec connector is not connected" in str(failure)
+    assert isinstance(failure, TypeError) and "requires a .json file" in str(failure)
 
 
 def test_exact_root_and_fixed_explicit_inline_child_types(tmp_path: Path) -> None:
