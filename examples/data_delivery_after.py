@@ -123,7 +123,7 @@ def validate(
     delivery: DownloadedDelivery,
 ) -> ValidatedDelivery | fss.MismatchErr:
     output = ValidatedDelivery.relative_to(delivery.path)
-    manifest: DeliveryManifest = delivery.manifest.load()
+    manifest: DeliveryManifest = fss.raise_exn(delivery.manifest.load())
     parts = sum(len(day.parts) for day in delivery.batches.days)
     if parts != manifest.expected_parts:
         return fss.MismatchErr(f"expected {manifest.expected_parts} parts, got {parts}")
@@ -137,8 +137,8 @@ def curate(
     target: Path,
 ) -> CuratedDataset | fss.MismatchErr:
     output = CuratedDataset.relative_to(target)
-    manifest: DeliveryManifest = delivery.manifest.load()
-    validation: ValidationReport = delivery.validation.load()
+    manifest: DeliveryManifest = fss.raise_exn(delivery.manifest.load())
+    validation: ValidationReport = fss.raise_exn(delivery.validation.load())
     parts = sum(len(day.parts) for day in delivery.batches.days)
     if parts != validation.parts:
         return fss.MismatchErr("delivery changed after validation")

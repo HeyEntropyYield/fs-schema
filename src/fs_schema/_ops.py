@@ -1,10 +1,11 @@
-from collections.abc import Callable
 from pathlib import Path
-from typing import TypeVar
+from shutil import copyfile
+from typing import TypeVar, cast
 
 from typing_extensions import TypeIs, assert_never
 
-from ._types import DataclassInstance, HasSave, LoadT, PathIsh, Puttable
+from ._mashumaro_json import decode_json, encode_json
+from ._types import DataclassInstance, HasSave, LoadSpec, LoadT, PathIsh, Puttable
 
 # The passthrough value is returned unchanged when it is not a mismatch.
 _T = TypeVar("_T")
@@ -18,10 +19,14 @@ def is_mismatch(x: object) -> TypeIs[MismatchErr]:
     return isinstance(x, MismatchErr)
 
 
-def raise_mismatch(x: _T | MismatchErr) -> _T:
-    if is_mismatch(x):
+def raise_exn(x: _T | Exception) -> _T:
+    if isinstance(x, Exception):
         raise x
     return x
+
+
+def raise_mismatch(x: _T | MismatchErr) -> _T:
+    return raise_exn(x)
 
 
 def exists_opt(path: PathIsh) -> Path | None:
@@ -38,17 +43,24 @@ def put(path: PathIsh, data: Puttable) -> None:
         case str():
             _ = target.write_text(data)
         case Path():
-            _ = target.write_bytes(data.read_bytes())
+            _ = copyfile(data, target)
         case HasSave():
             data.save(target)
         case DataclassInstance():
-            raise TypeError(f"no declared codec for {type(data).__name__}")
+            encoded = encode_json(target, data)
+            if isinstance(encoded, bytes):
+                _ = target.write_bytes(encoded)
+            else:
+                _ = target.write_text(encoded)
         case _:  # pragma: no cover - closed-union defense
             assert_never(data)
 
 
-def load(path: PathIsh, decoder: Callable[[Path], LoadT]) -> LoadT | Exception:
+def load(path: PathIsh, decoder: LoadSpec[LoadT]) -> LoadT | Exception:
+    target = Path(path)
     try:
-        return decoder(Path(path))
+        if isinstance(decoder, type):
+            return cast(LoadT, decode_json(target, decoder))
+        return decoder(target)
     except Exception as error:
         return error

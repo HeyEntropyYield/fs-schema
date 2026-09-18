@@ -16,6 +16,7 @@ from ._ops import (
     exists_opt as exists_opt,
     is_mismatch as is_mismatch,
     put as put,
+    raise_exn as raise_exn,
     raise_mismatch as raise_mismatch,
 )
 from ._schema import (

@@ -108,3 +108,4 @@ def check() -> None:
     assert_type(text, _schema._FixedFile[str])
     assert_type(text.load(), str | Exception)
     assert_type(_ops.load(Path("value"), decode), str | Exception)
+    assert_type(fss.raise_exn(text.load()), str)

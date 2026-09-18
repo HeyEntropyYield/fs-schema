@@ -17,7 +17,7 @@ import fs_schema as fss
 | Schemas | `Schema`, `SchemaRoot`, `Layout` |
 | Declarations | `File`, `Dir`, `FILES`, `dt` |
 | Paths and matches | `Located`, `Match`, `exists_opt` |
-| Mismatches | `MismatchErr`, `is_mismatch`, `raise_mismatch` |
+| Result helpers | `MismatchErr`, `is_mismatch`, `raise_mismatch`, `raise_exn` |
 | Writing | `put` |
 | Package metadata | `__version__` |
 
@@ -395,11 +395,11 @@ reopened_plan: fss.SchemaRoot[Delivery] = delivery.root()
 | `file.read_bytes()` | `bytes` |
 | `file.read_text()` | `str` |
 | `file.put(data)` | Writes to the declared file |
-| `file.load()` | Decoded value; annotate it with the declared model type |
+| `file.load()` | Declared value or decoding exception |
 | `fss.put(path, data)` | Lower-level direct-path helper; creates missing parent directories |
 
 ```python
-manifest: Manifest = delivery.manifest.load()
+manifest: Manifest = fss.raise_exn(delivery.manifest.load())
 
 
 def load_manifest(path: Path) -> Manifest:
@@ -412,10 +412,14 @@ custom_manifest = fss.File(
 )
 ```
 
-`put` accepts `bytes`, text, a source `Path`, an object with `save(Path)`, or a
-dataclass instance. Codec selection and serialization details are outside this
-API reference.
+`put` creates the target parent, then writes bytes or text, copies a source
+`Path`, or calls `save(Path)`. Other dataclass instances are encoded as JSON
+with Mashumaro. Install `fs-schema[mashumaro]` for the standard backend or
+`fs-schema[orjson]` to prefer its faster backend.
+`load()` returns decoding failures as values, and `raise_exn` raises one while
+preserving the successful result type.
 
 ```text
 put(path, data) -> None
+raise_exn(value: T | Exception) -> T
 ```

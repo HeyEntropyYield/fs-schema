@@ -61,7 +61,7 @@ def curate(source: Path, target: Path) -> Curated | fss.MismatchErr:
         return delivery
 
     # The declared File schema supplies this dataclass loader
-    manifest: Manifest = delivery.manifest.load()
+    manifest: Manifest = fss.raise_exn(delivery.manifest.load())
     # Templates are ordered collections; an item is one capture-bearing match
     latest = delivery.batches.days[-1]
     source_parts = tuple(part.path for part in latest.parts)

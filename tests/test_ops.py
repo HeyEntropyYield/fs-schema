@@ -31,12 +31,17 @@ def test_exists_and_mismatch_helpers(tmp_path: Path) -> None:
     mismatch = _ops.MismatchErr("missing")
     assert _ops.is_mismatch(mismatch)
     assert not _ops.is_mismatch("value")
+    assert _ops.raise_exn("value") == "value"
     assert _ops.raise_mismatch("value") == "value"
+    with pytest.raises(ValueError, match="bad value"):
+        _ops.raise_exn(ValueError("bad value"))
     with pytest.raises(_ops.MismatchErr, match="missing"):
         _ops.raise_mismatch(mismatch)
 
 
-def test_put_covers_supported_bodies_and_dataclass_without_codec(tmp_path: Path) -> None:
+def test_put_covers_supported_bodies_and_dataclass_without_codec(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     binary = tmp_path / "binary" / "value.bin"
     _ops.put(binary, b"bytes")
     assert binary.read_bytes() == b"bytes"
@@ -48,8 +53,16 @@ def test_put_covers_supported_bodies_and_dataclass_without_codec(tmp_path: Path)
     source = tmp_path / "source.txt"
     _ = source.write_text("copied")
     copied = tmp_path / "copied" / "value.txt"
-    _ops.put(copied, source)
-    assert copied.read_text() == "copied"
+    copied_from: list[tuple[str | Path, str | Path]] = []
+
+    def record_copy(source_path: str | Path, target_path: str | Path) -> str:
+        copied_from.append((source_path, target_path))
+        return str(target_path)
+
+    with monkeypatch.context() as copy_patch:
+        copy_patch.setattr(_ops, "copyfile", record_copy)
+        _ops.put(copied, source)
+    assert copied_from == [(source, copied)]
 
     saver = Saver()
     saved = tmp_path / "saved" / "value.txt"
@@ -57,11 +70,9 @@ def test_put_covers_supported_bodies_and_dataclass_without_codec(tmp_path: Path)
     assert saver.saved_to == saved
     assert saved.read_text() == "saved"
 
-    unsupported = tmp_path / "model" / "value.json"
-    with pytest.raises(TypeError, match="no declared codec for Model"):
-        _ops.put(unsupported, Model(1))
-    assert unsupported.parent.is_dir()
-    assert not unsupported.exists()
+    model = tmp_path / "model" / "value.json"
+    _ops.put(model, Model(1))
+    assert model.read_text() == '{"value":1}'
 
 
 def test_load_returns_values_and_caught_exceptions(tmp_path: Path) -> None:
