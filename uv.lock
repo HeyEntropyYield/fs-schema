@@ -613,7 +613,7 @@ wheels = [
 
 [[package]]
 name = "fs-schema"
-version = "0.4.1rc1"
+version = "0.4.3"
 source = { editable = "." }
 dependencies = [
     { name = "beartype" },
