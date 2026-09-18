@@ -30,6 +30,7 @@ def test_exists_and_mismatch_helpers(tmp_path: Path) -> None:
 
     mismatch = _ops.MismatchErr("missing")
     assert _ops.is_mismatch(mismatch)
+    assert not mismatch
     assert not _ops.is_mismatch("value")
     assert _ops.raise_exn("value") == "value"
     assert _ops.raise_mismatch("value") == "value"

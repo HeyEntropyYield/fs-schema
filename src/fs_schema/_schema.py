@@ -109,7 +109,8 @@ class _Selector:
 
 
 # Declaration specs. Only `name` is positional. Every declaration needs an
-# exact-name, format, or regex selector. Exact names have cardinality one.
+# exact-name, format, or regex selector. Exact names are scalars: min 0 or 1,
+# max implicit 1.
 @dataclass(frozen=True, slots=True)
 class Node:
     name: str = ""
@@ -265,6 +266,9 @@ class _Fixed:
 
     def exists(self) -> bool:
         return self.path.exists()
+
+    def __bool__(self) -> bool:
+        return True
 
 
 def _load_model(path: Path, schema: type[_L_co]) -> _L_co | Exception:
@@ -422,23 +426,28 @@ class Template(Matches[_M_co, _Defn_co], Generic[_M_co, _Defn_co]):
 
 if TYPE_CHECKING:
     Child: TypeAlias = "FixedFile[object] | FixedDir | Matches[_FileMatch[object] | _DirMatch]"
+    # LUB of mixed slots. Optional exact may be None; required/collection never.
+    BoundChild: TypeAlias = "Child | None"
+    GetChild: TypeAlias = Child
 else:
     Child: TypeAlias = typing.Union[  # noqa: UP007
         FixedFile[object],
         ForwardRef("fs_schema._schema.FixedDir"),
         Matches[typing.Union[_FileMatch[object], ForwardRef("fs_schema._schema._DirMatch")]],  # noqa: UP007
     ]
+    BoundChild: TypeAlias = Child | None
+    GetChild: TypeAlias = BoundChild
 
 
 class FixedDir(_Fixed):
-    _children: tuple[Child, ...]
+    _children: tuple[BoundChild, ...]
     _lookup: Mapping[str, int]
     defn: DirDefn
 
     def __init__(
         self,
         path: PathIsh,
-        children: Sequence[Child],
+        children: Sequence[BoundChild],
         defn: DirDefn,
     ) -> None:
         _Fixed.__init__(self, path)
@@ -446,38 +455,66 @@ class FixedDir(_Fixed):
         self._lookup = defn.lookup
         self.defn = defn
 
-    def __iter__(self) -> Iterator[Child]:
-        return iter(self._children)
+    def __iter__(self) -> Iterator[GetChild]:
+        return iter(typing.cast(tuple[GetChild, ...], typing.cast(object, self._children)))
 
     def __len__(self) -> int:
         return len(self._children)
 
     @overload
-    def __getitem__(self, index: int) -> Child: ...
+    def __getitem__(self, index: int) -> GetChild: ...
 
     @overload
-    def __getitem__(self, index: str) -> Child: ...
+    def __getitem__(self, index: str) -> GetChild: ...
 
-    def __getitem__(self, index: int | str) -> Child:
-        if isinstance(index, str):
-            return self._children[self._lookup[index]]
-        return self._children[index]
+    def __getitem__(self, index: int | str) -> GetChild:
+        child = self._children[self._lookup[index]] if isinstance(index, str) else self._children[index]
+        return typing.cast(GetChild, typing.cast(object, child))
 
-    def __getattr__(self, name: str) -> Child:
+    def __getattr__(self, name: str) -> GetChild:
         try:
-            child = self._children[self._lookup[name]]
+            index = self._lookup[name]
         except KeyError:
             raise AttributeError(name) from None
-        node = defn_node(child.defn)
+        child = self._children[index]
+        defn = self.defn.defns[index] if child is None else child.defn
+        node = defn_node(defn)
         if name != node.alias and name != _normalize_name(node.name):
             raise AttributeError(name)
-        return child
+        return typing.cast(GetChild, typing.cast(object, child))
 
 
 class _DirMatch(_CaptureState, FixedDir):
-    def __init__(self, path: PathIsh, captures: ParsedCaptures, children: Sequence[Child], defn: DirDefn) -> None:
+    def __init__(self, path: PathIsh, captures: ParsedCaptures, children: Sequence[BoundChild], defn: DirDefn) -> None:
         FixedDir.__init__(self, path, children, defn)
         self._captures: ParsedCaptures = captures
+
+
+def _is_bound_dir_match_type(value: object, schema_type: type) -> TypeIs[type[_DirMatch]]:
+    return isinstance(value, type) and issubclass(value, schema_type) and issubclass(value, _DirMatch)
+
+
+def _bound_dir_match_type(defn: DirDefn) -> type[_DirMatch]:
+    schema_type = defn.child_type
+    if schema_type is None:
+        return _DirMatch
+    cached = vars(schema_type).get("_bound_match_type")
+    if _is_bound_dir_match_type(cached, schema_type):
+        return cached
+    generated = SchemaCls(
+        f"{schema_type.__name__}Match",
+        (schema_type, _DirMatch),
+        {
+            "__module__": schema_type.__module__,
+            "__qualname__": f"{schema_type.__qualname__}Match",
+            _BOUND_MATCH: True,
+            "__init__": _DirMatch.__init__,
+        },
+    )
+    if not _is_bound_dir_match_type(generated, schema_type):
+        raise AssertionError("bound match type must subclass schema and _DirMatch")
+    type.__setattr__(schema_type, "_bound_match_type", generated)
+    return generated
 
 
 def _plan_children(path: Path, dir_defn: DirDefn) -> tuple[Child, ...]:
@@ -533,14 +570,17 @@ def _validate_node(node: Node) -> tuple[_Selector, int | None]:
         raise ValueError("declaration requires name, fmt, or match")
     if node.name and node.fmt is not None:
         raise ValueError("name cannot be combined with fmt")
-    maximum = 1 if node.name and node.max is None else node.max
     if node.min < 0:
         raise ValueError("min must be at least zero")
-    if maximum is not None and maximum < node.min:
+    if node.name:
+        if node.min not in (0, 1):
+            raise ValueError("exact-name min must be 0 or 1")
+        if node.max not in (None, 1):
+            raise ValueError("exact-name max is implicit")
+        return _Selector(node.fmt, node.match), 1
+    if node.max is not None and node.max < node.min:
         raise ValueError("max must be at least min")
-    if node.name and (node.min != 1 or maximum != 1):
-        raise ValueError("exact-name declarations require min=max=1")
-    return _Selector(node.fmt, node.match), maximum
+    return _Selector(node.fmt, node.match), node.max
 
 
 FsCache: TypeAlias = dict[Path, CacheSeq[Path]]
@@ -551,11 +591,11 @@ def _is_kind(path: Path, defn: Defn) -> bool:
     return path.is_file() if isinstance(defn, File) else path.is_dir()
 
 
-def _bind_children(path: Path, dir_defn: DirDefn, cache: FsCache) -> tuple[Child, ...] | MismatchErr:
+def _bind_children(path: Path, dir_defn: DirDefn, cache: FsCache) -> tuple[BoundChild, ...] | MismatchErr:
     if not path.is_dir():
         return MismatchErr(f"expected directory: {path}")
 
-    children: list[Child] = []
+    children: list[BoundChild] = []
     for position, defn in enumerate(dir_defn.defns):
         if is_mismatch(child := _bind_dir_defn(path, position, defn, cache)):
             return child
@@ -570,10 +610,12 @@ def _listing(path: Path, cache: FsCache) -> CacheSeq[Path]:
     return listing
 
 
-def _bind_dir_defn(path: Path, position: int, defn: Defn, cache: FsCache) -> Child | MismatchErr:
+def _bind_dir_defn(path: Path, position: int, defn: Defn, cache: FsCache) -> BoundChild | MismatchErr:
     node = defn_node(defn)
     if node.name:
         target = path / node.name
+        if node.min == 0 and not target.exists():
+            return None
         if node.select(target.name) is None:
             return MismatchErr(f"fixed basename does not match {node.match!r}: {target}")
         if not _is_kind(target, defn):
@@ -631,12 +673,13 @@ def _bind_file_matches(defn: File[_L], listing: Sequence[Path]) -> list[_FileMat
 
 def _bind_dir_matches(defn: DirDefn, listing: Sequence[Path], cache: FsCache) -> list[_DirMatch] | MismatchErr:
     matches: list[_DirMatch] = []
+    match_type = _bound_dir_match_type(defn)
     for target in listing:
         if (captures := defn.defn.select(target.name)) is None or not _is_kind(target, defn):
             continue
         if is_mismatch(children := _bind_children(target, defn, cache)):
             return children
-        matches.append(_DirMatch(target, captures, children, defn))
+        matches.append(match_type(target, captures, children, defn))
     return _sort_matches(matches, defn.defn)
 
 
@@ -834,6 +877,7 @@ def _compile_local_defns(cls: "type[Schema]") -> tuple[Defn, ...]:
 
 
 _CAPTURE_MEMBERS: Final = frozenset(("args", "kwargs"))
+_BOUND_MATCH: Final = "_fs_schema_bound_match"
 _UNSAFE_SCHEMA_DUNDERS: Final = frozenset(
     "RootT __delattr__ __fspath__ __getattr__ __getattribute__ __getitem__ __init__ __init_subclass__ "
     "__iter__ __len__ __new__ __setattr__ __slots__".split()  # pyright: ignore[reportImplicitStringConcatenation]
@@ -892,6 +936,8 @@ class SchemaCls(type):
         namespace: dict[str, object],
         **kwargs: object,
     ) -> "SchemaCls":
+        if namespace.get(_BOUND_MATCH):
+            return super().__new__(metacls, name, bases, namespace, **kwargs)
         _validate_schema_bases(name, bases)
         return super().__new__(metacls, name, bases, namespace, **kwargs)
 
@@ -959,6 +1005,8 @@ class Schema(FixedDir, metaclass=SchemaCls):
 
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
+        if cls.__dict__.get(_BOUND_MATCH):
+            return
         _validate_schema_class(cls)
         _compile_schema(cls)
         _validate_child_shadows(cls)

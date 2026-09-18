@@ -1,4 +1,5 @@
 # pyright: reportPrivateUsage=false, reportUnknownMemberType=false, reportUnknownArgumentType=false
+# pyright: reportAttributeAccessIssue=false
 from datetime import datetime
 from pathlib import Path
 
@@ -15,7 +16,6 @@ from fs_schema._schema import (
     Matches,
     Schema,
     Template,
-    _DirMatch,
     _FileMatch,
     bind_defns,
 )
@@ -106,11 +106,13 @@ def test_directory_matches_are_ordinary_dir_matches_with_captures(tmp_path: Path
     assert isinstance(bound, Root)
     assert type(bound.fixed) is Child and not isinstance(bound.fixed, Match)
     assert isinstance(bound.formatted, Template)
-    assert isinstance(bound.formatted[0], _DirMatch) and bound.formatted[0].kwargs["n"] == 2
-    assert type(bound.formatted[0]) is _DirMatch
+    assert isinstance(bound.formatted[0], Child) and isinstance(bound.formatted[0], Match)
+    assert bound.formatted[0].kwargs["n"] == 2
     assert isinstance(bound.regexes, Matches) and not isinstance(bound.regexes, Template)
-    assert isinstance(bound.regexes[0], _DirMatch) and bound.regexes[0].kwargs["label"] == "a"
+    assert isinstance(bound.regexes[0], Match) and bound.regexes[0].kwargs["label"] == "a"
+    assert bound.regexes[0].leaf.path.name == "leaf.txt"
     assert isinstance(bound.both, Template) and bound.both[0].kwargs["n"] == 3
+    assert isinstance(bound.both[0], Child) and isinstance(bound.both[0], Match)
     assert Root.fixed is Child
     assert Root.formatted is Template
     assert Root.regexes is Matches
@@ -205,7 +207,7 @@ def test_exact_root_and_fixed_explicit_inline_child_types(tmp_path: Path) -> Non
     assert type(bound) is Root
     assert type(bound.explicit) is Explicit
     assert type(bound.inline) is Root.inline
-    assert type(bound.inline.deep) is Root.inline.deep  # pyright: ignore[reportAttributeAccessIssue]
+    assert type(bound.inline.deep) is Root.inline.deep
     assert Root.inline.deep.leaf is FixedFile
     assert not hasattr(bound, "args") and not isinstance(bound, Match)
     assert not hasattr(bound.explicit, "kwargs")
@@ -230,12 +232,27 @@ def test_repeated_schema_rhs_uses_shared_collection_and_dir_match_types(tmp_path
     assert isinstance(bound.explicit, Template)
     assert isinstance(bound.inline, Matches) and not isinstance(bound.inline, Template)
     assert Root.explicit is Template and Root.inline is Matches
-    assert all(type(item) is _DirMatch and isinstance(item, Match) for item in bound.explicit)
+    assert all(isinstance(item, Item) and isinstance(item, Match) for item in bound.explicit)
     assert [item.kwargs["number"] for item in bound.explicit] == [1, 2]
-    assert type(bound.inline[0]) is _DirMatch and bound.inline[0].kwargs["number"] == "3"
+    assert isinstance(bound.inline[0], Match) and bound.inline[0].kwargs["number"] == "3"
     first_explicit = bound.explicit[0]
-    assert isinstance(first_explicit, _DirMatch) and first_explicit.leaf.path.name == "leaf.txt"
-    assert not isinstance(bound.explicit[0], Item)
+    assert isinstance(first_explicit, Item) and first_explicit.leaf.path.name == "leaf.txt"
+    assert isinstance(bound.explicit[0], Item)
+
+
+def test_bind_result_bool_and_empty_collection(tmp_path: Path) -> None:
+    class Empty(Schema):
+        pass
+
+    class OptionalParts(Schema):
+        schema = {"parts": File(fmt="n{n:d}.txt", min=0)}
+
+    assert not MismatchErr("missing")
+    empty = Empty.bind(tmp_path)
+    assert empty and type(empty) is Empty
+    bound = OptionalParts.bind(tmp_path)
+    assert bound and type(bound) is OptionalParts
+    assert not bound.parts
 
 
 def test_root_kind_validation_including_empty_schemas(tmp_path: Path) -> None:
@@ -273,7 +290,7 @@ def test_dir_schema_has_no_runtime_merge_or_second_binding(tmp_path: Path, monke
     original = _schema._bind_children
     visited: list[Path] = []
 
-    def counted(path: Path, defn: DirDefn, cache: _schema.FsCache) -> tuple[_schema.Child, ...] | MismatchErr:
+    def counted(path: Path, defn: DirDefn, cache: _schema.FsCache) -> tuple[_schema.BoundChild, ...] | MismatchErr:
         visited.append(path)
         return original(path, defn, cache)
 

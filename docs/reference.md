@@ -25,10 +25,9 @@ All names in this table are available from `fs_schema`.
 
 ## Defining schemas
 
-Subclass `Schema` and define a `schema` mapping. Nested mappings represent
-nested directories. A Schema subclass has exactly one direct Schema base.
-Schema subclasses are layout declarations; do not add methods, mixins, custom
-metaclasses, or other behavior, as those uses are unsupported.
+Subclass `Schema`. Put the layout in `schema`.
+Nested mapping = nested directory.
+One Schema base. No methods, mixins, or extra metaclasses.
 
 ```python
 @dataclass
@@ -68,34 +67,30 @@ class Delivery(fss.Schema):
 | `"alias": "file.ext"` or `"alias": File(...)` | One file |
 | `FILES: ["file.ext", File(...)]` | Files in the current directory |
 
-Only `name` is positional in `File` and `Dir`. All other options are
-keyword-only. Every declaration requires `name`, `fmt`, or `match`. For a fixed
-directory, an explicit `ChildSchema` is both the nested layout and its exact
-runtime type. A fixed inline mapping receives one private `Schema` subtype with
-stable identity, visible through recursive class-level navigation.
-
-`Dir(..., schema=Required)` checks the right-hand-side layout when the
-containing Schema is defined. It must contain the required declarations
-recursively; extra declarations are fine. `Required` is not merged, and the
-right-hand side still controls the directory's children and runtime type.
+`name` is the only positional arg. Need `name`, `fmt`, or `match`.
+`Dir(...): Child` → child type is `Child`.
+Inline `{...}` → private Schema with stable identity.
+`Dir(schema=Required)` → class-time subset check. RHS still owns children.
 
 ### Templates, matching, and allowed match counts
 
 | Option | Meaning |
 | --- | --- |
-| `name` | Exact basename. It cannot be combined with `fmt`. |
-| `fmt` | Full-basename parse and format template, validated when declared. |
-| `match` | Regex selector on full basename with `re.fullmatch`, compiled when declared. |
-| `min` | Minimum count; defaults to `1`. Use `0` for an optional `fmt`/`match` collection. |
-| `max` | Maximum count. Exact names require `min=max=1`; templates are unbounded. |
-| `alias` | Name used for child access in Python. |
+| `name` | Exact basename. Not with `fmt`. |
+| `fmt` | Full-basename parse/format template. |
+| `match` | `re.fullmatch` on the basename. |
+| `min` | Minimum count. Default 1. Exact `min=0` = optional. |
+| `max` | Maximum count. Default unbounded. Exact name: omit it. |
+| `alias` | Python child name. |
 | `sort` | Key function for template matches. |
-| `sort_rev` | Reverse the match order when true. |
-| `schema` | Loader for a file, or an extra schema contract for a directory. |
+| `sort_rev` | Reverse match order. |
+| `schema` | File loader, or extra Dir contract. |
 
-With `name`, `match` validates the exact basename. With `fmt`, it adds a filter without changing format captures. Used alone, `match` exposes unnamed groups in `args` and named groups in `kwargs`. Optional groups produce `None`.
+`name` + `match` validates that basename.
+`fmt` + `match` filters; captures stay from `fmt`.
+`match` alone: unnamed groups → `args`, named → `kwargs`. Optional groups → `None`.
 
-Untyped format fields produce `str`, `:d` fields produce `int`, and datetime format fields produce `datetime`.
+Untyped format fields → `str`. `:d` → `int`. Datetime fields → `datetime`.
 
 ```python
 part_decl = fss.File(
@@ -105,13 +100,12 @@ part_decl = fss.File(
 day_decl = fss.Dir(alias="days", fmt=fss.dt("%Y-%m-%d"), min=0)
 ```
 
-`fss.dt("%Y-%m-%d")` returns `"{:%Y-%m-%d}"`. Its datetime is capture
-`args[0]`. A named field such as `{day:%Y-%m-%d}` is capture `kwargs["day"]`.
+`fss.dt("%Y-%m-%d")` → `"{:%Y-%m-%d}"`. Capture is `args[0]`.
+`{day:%Y-%m-%d}` → `kwargs["day"]`.
 
 ### Inheritance and replacement
 
-Ordinary inheritance starts with the direct base's effective layout. The
-subclass may add declarations or replace inherited ones.
+Subclass layout starts from the base. Add or replace nodes.
 
 ```python
 class AuditedDelivery(Delivery):
@@ -120,10 +114,9 @@ class AuditedDelivery(Delivery):
     }
 ```
 
-Within one directory, distinct children cannot collide by alias, exact name,
-normalized name, or `fmt`; ambiguous layouts fail when the class is defined.
-Aliases, names, and formats identify inherited declarations for whole-node
-replacement. Match-only declarations without one of those identities append.
+Alias, name, or `fmt` collision fails at class creation.
+Matching keys replace the inherited node.
+Anonymous match-only decls append.
 
 ### Declaration API
 
@@ -161,22 +154,23 @@ The mapping table above defines the valid `Layout` key-value pairings.
 
 ## Applying schemas
 
-`bind` checks an existing directory tree. It returns an ordinary instance of the
-exact requested schema class on success (`type(result) is Delivery` below), or a
-`MismatchErr` value on failure. Fixed directories backed by explicit or inline
-schemas have that exact Schema runtime type. Repeated directories bind to
-collections whose elements are ordinary directory matches with captures and
-child navigation.
+`bind` checks the tree.
+Success → that Schema class. Failure → `MismatchErr`.
+Fixed `Dir(...): Child` → `Child`.
+Repeated `Dir(...): Batch` → each item is a `Batch` with captures.
+Exact `min=0` → `None` if absent. Write after bind via `bound.root()`.
 
 ```python
 result = Delivery.bind("/srv/incoming/delivery-42")
-if fss.is_mismatch(result):
+if not result:
     print(result)
 else:
     delivery: Delivery = result
 ```
 
-Use `raise_mismatch` when a mismatch should be raised:
+`MismatchErr` is falsy. Bound schemas are truthy.
+`if not result` works when the type stays `S | MismatchErr`.
+Cross-schema returns still need `is_mismatch`.
 
 ```python
 delivery = fss.raise_mismatch(
@@ -192,9 +186,7 @@ planned_delivery = Delivery.relative_to("/srv/incoming/delivery-42")
 validated_from_plan = planned_delivery.bind()
 ```
 
-Binding checks declared structure and allowed match counts at that moment. It
-ignores undeclared entries, is not a filesystem lock, and returns the first
-mismatch.
+Bind checks structure and counts now. Ignores extras. First mismatch wins.
 
 ```text
 Schema.bind(root: str | os.PathLike[str] | Located) -> Self | MismatchErr

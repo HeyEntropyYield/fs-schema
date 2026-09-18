@@ -13,6 +13,7 @@ def test_declarations_are_frozen_slotted_values_with_contextual_defaults() -> No
     assert fixed.name == "value.txt"
     assert fixed.min == fixed.max == 1
     assert _schema.Dir("values").max == 1
+    assert _schema.File("value.txt", max=1) == fixed
     assert _schema.File(fmt="many-{n}.txt", max=3).max == 3
     pattern: _fmt.FmtLike = _fmt.dt("%Y%m%d")
     templated: _schema.File[object] = _schema.File(fmt=pattern)
@@ -46,9 +47,8 @@ def test_files_is_the_single_identity_token() -> None:
         ({"name": "value", "fmt": "{value}"}, "name cannot be combined"),
         ({"name": "value", "min": -1}, "min must be at least zero"),
         ({"fmt": "{value}", "min": 2, "max": 1}, "max must be at least min"),
-        ({"name": "value", "min": 0}, "exact-name declarations require min=max=1"),
-        ({"name": "value", "max": 2}, "exact-name declarations require min=max=1"),
-        ({"name": "value", "min": 2}, "max must be at least min"),
+        ({"name": "value", "max": 2}, "exact-name max is implicit"),
+        ({"name": "value", "min": 2}, "exact-name min must be 0 or 1"),
     ],
 )
 def test_declaration_semantic_failures(kwargs: dict[str, object], message: str) -> None:

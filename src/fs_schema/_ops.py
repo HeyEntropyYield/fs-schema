@@ -12,7 +12,8 @@ _T = TypeVar("_T")
 
 
 class MismatchErr(Exception):
-    pass
+    def __bool__(self) -> bool:
+        return False
 
 
 def is_mismatch(x: object) -> TypeIs[MismatchErr]:
