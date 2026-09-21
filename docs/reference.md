@@ -79,11 +79,11 @@ Inline `{...}` → private Schema with stable identity.
 | `name` | Exact basename. Not with `fmt`. |
 | `fmt` | Full-basename parse/format template. |
 | `match` | `re.fullmatch` on the basename. |
-| `min` | Minimum count. Default 1. Exact `min=0` = optional. |
-| `max` | Maximum count. Default unbounded. Exact name: omit it. |
+| `optional` | Exact: absent after bind is `None`. |
+| `min` / `max` | Collection count. Default min 1, max unbounded. |
 | `alias` | Python child name. |
-| `sort` | Key function for template matches. |
-| `sort_rev` | Reverse match order. |
+| `sort` / `sort_rev` | Collection order. |
+| `skip_mismatch` | Collection; unused until later. |
 | `schema` | File loader, or extra Dir contract. |
 
 `name` + `match` validates that basename.
@@ -120,33 +120,61 @@ Anonymous match-only decls append.
 
 ### Declaration API
 
+Exact basename:
+
 ```text
 File(
-    name: str = "",
+    name: str,
     *,
-    fmt: FmtLike | None = None,
-    match: str | None = None,
-    min: int = 1,
-    max: int | None = None,
     alias: str | None = None,
-    sort: Callable[[Match], str | int | float | datetime | Located] | None = None,
-    sort_rev: bool = False,
+    match: str | None = None,
+    optional: bool = False,
     schema: type[T] | Callable[[Path], T] | None = None,
 ) -> File[T]
 
 Dir(
-    name: str = "",
+    name: str,
     *,
-    fmt: FmtLike | None = None,
+    alias: str | None = None,
+    match: str | None = None,
+    optional: bool = False,
+    schema: type[S] | None = None,
+) -> Dir[S]
+```
+
+Collection (`fmt` and/or `match`, no `name`):
+
+```text
+File(
+    *,
+    fmt: FmtLike,
     match: str | None = None,
     min: int = 1,
     max: int | None = None,
     alias: str | None = None,
     sort: Callable[[Match], str | int | float | datetime | Located] | None = None,
     sort_rev: bool = False,
+    skip_mismatch: bool = False,
+    schema: type[T] | Callable[[Path], T] | None = None,
+) -> File[T]
+
+Dir(
+    *,
+    fmt: FmtLike,
+    match: str | None = None,
+    min: int = 1,
+    max: int | None = None,
+    alias: str | None = None,
+    sort: Callable[[Match], str | int | float | datetime | Located] | None = None,
+    sort_rev: bool = False,
+    skip_mismatch: bool = False,
     schema: type[S] | None = None,
 ) -> Dir[S]
+```
 
+Regex-only collection omits `fmt` and supplies `match` instead.
+
+```text
 dt(pattern: str) -> FmtLike
 ```
 
@@ -158,7 +186,7 @@ The mapping table above defines the valid `Layout` key-value pairings.
 Success → that Schema class. Failure → `MismatchErr`.
 Fixed `Dir(...): Child` → `Child`.
 Repeated `Dir(...): Batch` → each item is a `Batch` with captures.
-Exact `min=0` → `None` if absent. Write after bind via `bound.root()`.
+Exact `optional=True` → `None` if absent. Write after bind via `bound.root()`.
 
 ```python
 result = Delivery.bind("/srv/incoming/delivery-42")

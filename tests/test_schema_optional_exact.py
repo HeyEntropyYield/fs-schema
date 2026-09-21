@@ -20,8 +20,8 @@ class Notes(Schema):
 class Delivery(Schema):
     schema = {
         "manifest": "manifest.json",
-        "receipt": File("receipt.json", min=0),
-        Dir("notes", min=0): Notes,
+        "receipt": File("receipt.json", optional=True),
+        Dir("notes", optional=True): Notes,
         Dir(alias="days", fmt="{day:%Y-%m-%d}", min=0): Batch,
     }
 
@@ -31,8 +31,8 @@ def _write_required(root: Path) -> None:
 
 
 def test_exact_name_optional_defaults_max_to_one() -> None:
-    file = File("receipt.json", min=0)
-    folder = Dir("notes", min=0)
+    file = File("receipt.json", optional=True)
+    folder = Dir("notes", optional=True)
     assert file.name == "receipt.json" and file.min == 0 and file.max == 1
     assert folder.name == "notes" and folder.min == 0 and folder.max == 1
 

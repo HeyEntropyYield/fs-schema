@@ -11,9 +11,8 @@ Core state model:
 - `Schema.bind(path)`: validate existing tree; returns schema or `MismatchErr`.
 - `Schema.relative_to(path)`: planned paths; returns `SchemaRoot[Schema]`.
 - `SchemaRoot.bind()`: validate written tree and return schema.
-- `File`, `Dir`, `FILES`: layout declaration.
+- `File`, `Dir`, `FILES`: layout declaration. Exact names take `optional`; collections take `fmt`, `match`, `min`, `max`, `sort`.
 - Attribute/index access: generated, schema-aware traversal.
-- `fmt`, `match`, `min`, `max`, `sort`: repeated-node matching.
 - `Match.args`, `Match.kwargs`, `filter`, `find`, `where`, `get`: collection queries and captured-value access.
 - `put`, `load`, `raise_exn`, `path`: filesystem I/O.
 - Optional Mashumaro integration: dataclass JSON, with an optional `orjson` backend.

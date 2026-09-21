@@ -3,7 +3,7 @@ import os
 import re
 import typing
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from dataclasses import KW_ONLY, dataclass, field, replace
+from dataclasses import KW_ONLY, InitVar, dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from types import MappingProxyType
@@ -108,9 +108,9 @@ class _Selector:
 ## User schema file/dir declarations
 
 
-# Declaration specs. Only `name` is positional. Every declaration needs an
-# exact-name, format, or regex selector. Exact names are scalars: min 0 or 1,
-# max implicit 1.
+# Declaration specs. Exact names are positional scalars (max implicit 1).
+# Collections are keyword-only and need fmt and/or match.
+# `optional` is InitVar: exact ctor sugar for min=0, not stored, not on collections.
 @dataclass(frozen=True, slots=True)
 class Node:
     name: str = ""
@@ -120,11 +120,17 @@ class Node:
     min: int = 1
     max: int | None = None
     alias: str | None = None
+    optional: InitVar[bool] = False
     sort: SortFn | None = None
     sort_rev: bool = False
+    skip_mismatch: bool = False
     _selector: _Selector = field(init=False, repr=False, compare=False)
 
-    def __post_init__(self) -> None:
+    def __post_init__(self, optional: bool) -> None:
+        if optional:
+            if not self.name:
+                raise ValueError("optional is only valid for exact-name declarations")
+            object.__setattr__(self, "min", 0)
         selector, maximum = _validate_node(self)
         object.__setattr__(self, "_selector", selector)
         if self.max is None and maximum is not None:
@@ -138,11 +144,101 @@ class Node:
 class File(Node, Generic[_L_co]):
     schema: LoadSpec[_L_co] | None = None
 
+    if TYPE_CHECKING:
+
+        @overload
+        def __init__(
+            self,
+            name: str,
+            *,
+            alias: str | None = None,
+            match: str | None = None,
+            optional: bool = False,
+            schema: LoadSpec[_L_co] | None = None,
+        ) -> None: ...
+
+        @overload
+        def __init__(
+            self,
+            *,
+            fmt: FmtLike,
+            match: str | None = None,
+            min: int = 1,
+            max: int | None = None,
+            alias: str | None = None,
+            sort: SortFn | None = None,
+            sort_rev: bool = False,
+            skip_mismatch: bool = False,
+            schema: LoadSpec[_L_co] | None = None,
+        ) -> None: ...
+
+        @overload
+        def __init__(
+            self,
+            *,
+            match: str,
+            fmt: None = None,
+            min: int = 1,
+            max: int | None = None,
+            alias: str | None = None,
+            sort: SortFn | None = None,
+            sort_rev: bool = False,
+            skip_mismatch: bool = False,
+            schema: LoadSpec[_L_co] | None = None,
+        ) -> None: ...
+
+        def __init__(self, *args: object, **kwargs: object) -> None: ...  # pyright: ignore[reportMissingSuperCall]
+
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Dir(Node, Generic[_D_co]):
     # Optional extra layout contract for whatever appears on this Dir's RHS.
     schema: type[_D_co] | None = None
+
+    if TYPE_CHECKING:
+
+        @overload
+        def __init__(
+            self,
+            name: str,
+            *,
+            alias: str | None = None,
+            match: str | None = None,
+            optional: bool = False,
+            schema: type[_D_co] | None = None,
+        ) -> None: ...
+
+        @overload
+        def __init__(
+            self,
+            *,
+            fmt: FmtLike,
+            match: str | None = None,
+            min: int = 1,
+            max: int | None = None,
+            alias: str | None = None,
+            sort: SortFn | None = None,
+            sort_rev: bool = False,
+            skip_mismatch: bool = False,
+            schema: type[_D_co] | None = None,
+        ) -> None: ...
+
+        @overload
+        def __init__(
+            self,
+            *,
+            match: str,
+            fmt: None = None,
+            min: int = 1,
+            max: int | None = None,
+            alias: str | None = None,
+            sort: SortFn | None = None,
+            sort_rev: bool = False,
+            skip_mismatch: bool = False,
+            schema: type[_D_co] | None = None,
+        ) -> None: ...
+
+        def __init__(self, *args: object, **kwargs: object) -> None: ...  # pyright: ignore[reportMissingSuperCall]
 
 
 @final
@@ -570,6 +666,13 @@ def _validate_node(node: Node) -> tuple[_Selector, int | None]:
         raise ValueError("declaration requires name, fmt, or match")
     if node.name and node.fmt is not None:
         raise ValueError("name cannot be combined with fmt")
+    if node.name:
+        if node.skip_mismatch:
+            raise ValueError("skip_mismatch is only valid for collection declarations")
+        if node.sort is not None:
+            raise ValueError("sort is only valid for collection declarations")
+        if node.sort_rev:
+            raise ValueError("sort_rev is only valid for collection declarations")
     if node.min < 0:
         raise ValueError("min must be at least zero")
     if node.name:
