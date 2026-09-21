@@ -11,6 +11,7 @@ because this page describes integration boundaries, not a runnable delivery
 system.
 
 ```python
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar
@@ -22,7 +23,7 @@ def download(source: str, target: Path) -> None:
     raise NotImplementedError(f"download {source} to {target}")
 
 
-def convert_parts(parts: tuple[Path, ...]) -> bytes:
+def convert_parts(parts: Sequence[Path]) -> bytes:
     raise NotImplementedError(f"convert {len(parts)} parts")
 
 
@@ -191,9 +192,9 @@ def pull(
     source: str,
     target: Path,
 ) -> DownloadedDelivery | fss.MismatchErr:
-    output = DownloadedDelivery.relative_to(target)
-    download(source, output.path)
-    return output.bind()
+    fs = DownloadedDelivery.relative_to(target)
+    download(source, fs.path)
+    return fs.bind()
 ```
 
 A mismatch is returned as a value. A successful result carries the downloaded
@@ -230,9 +231,9 @@ def validate(
         message = f"expected {manifest.expected_parts} parts, got {len(parts)}"
         return fss.MismatchErr(message)
 
-    output = ValidatedDelivery.relative_to(delivery.path)
-    output.validation.put(ValidationReport(parts=len(parts)))
-    return output.bind()
+    fs = ValidatedDelivery.relative_to(delivery.path)
+    fs.validation.create(ValidationReport(parts=len(parts)))
+    return fs.bind()
 ```
 
 The input object still denotes the downloaded state. Only the returned object
@@ -254,27 +255,16 @@ def curate(
     if len(delivery_parts(delivery)) != validation.parts:
         return fss.MismatchErr("delivery changed after validation")
 
-    output = CuratedDataset.relative_to(target)
-    partitions = 0
-    for source_day in delivery.batches.days:
-        source_parts = tuple(part.path for part in source_day.parts)
-        planned_day = output.partitions.days.format(day=source_day.kwargs.day)
-        planned_day.parts.format(part=0).put(convert_parts(source_parts))
-        partitions += 1
-
-    output.manifest.put(
-        CuratedManifest(
-            delivery_id=manifest.delivery_id,
-            partitions=partitions,
-        )
-    )
-    return output.bind()
+    fs = CuratedDataset.relative_to(target)
+    days = [
+        ({"day": source_day.kwargs.day}, {"parts": [({"part": 0}, convert_parts([part.path for part in source_day.parts]))]})
+        for source_day in delivery.batches.days
+    ]
+    fs.create(partitions={"days": days}, manifest=CuratedManifest(delivery_id=manifest.delivery_id, partitions=len(days)))
+    return fs.bind()
 ```
 
-Each `format()` call returns a planned fixed directory or file: it computes a
-concrete path but does not claim that path exists or return a bound match. The
-formatted file's `put()` method writes the converted bytes and creates missing
-parents. The final `bind()` checks the completed output shape.
+The list is the whole write. Each pair is one member: the captures, then the body that member would take. `part` is not the same capture as `day`, so the inner file still needs its own pair. A capture that an enclosing `format` already supplied is just the body. `bind()` checks the tree you wrote.
 
 ## Record loaded state and design retries first
 
@@ -293,10 +283,10 @@ def curated_parts(dataset: CuratedDataset) -> tuple[Path, ...]:
 def load(
     dataset: CuratedDataset,
 ) -> LoadedDataset | fss.MismatchErr:
-    output = LoadedDataset.relative_to(dataset.path)
+    fs = LoadedDataset.relative_to(dataset.path)
     load_id = warehouse_load(curated_parts(dataset))
-    output.receipt.put(LoadReceipt(load_id=load_id))
-    return output.bind()
+    fs.receipt.create(LoadReceipt(load_id=load_id))
+    return fs.bind()
 ```
 
 There is still a failure window: the warehouse may commit before the receipt
@@ -332,23 +322,9 @@ def ingest(
 are explicit transitions rather than conventions attached to four `Path`
 values.
 
-## Operational caveats
+## What these calls do not promise
 
-- `bind()` is a structural snapshot, not a lock. Another process can mutate
-  the tree immediately afterward; use immutable roots or locking when needed.
-- Binding checks declared names, allowed match counts, and nested shape. Model
-  decoding is separate; handle its exception value or use `raise_exn`.
-- `relative_to()` and `format()` plan paths. Failed writes can leave a
-  partial root; use a temporary directory plus rename, or idempotent writes,
-  when publication must be atomic.
-- Same-root state evidence needs an overwrite and concurrency policy. Decide
-  whether validation reports and load receipts are immutable, replaceable, or
-  versioned.
-- A local receipt proves only that local evidence exists. Remote idempotency and
-  reconciliation remain application responsibilities.
-- Generated child access is currently broad to static checkers; root transition
-  types remain the durable boundary. Write normal schema navigation and let the
-  schema remain the runtime authority.
+`relative_to` and `format` only plan paths. `create` and `put` write. `put` replaces one file atomically and creates missing parents. `create` can leave a partial tree if a later write fails. `bind` checks names and shape. `load` checks file contents.
 
 ## Companion listings
 

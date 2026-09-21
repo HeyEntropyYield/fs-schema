@@ -40,9 +40,9 @@ def test_fixed_file_owns_declaration_path_and_performs_io(tmp_path: Path) -> Non
     assert fixed < FixedFile(tmp_path / "nested" / "z.txt", defn)
     assert fixed.__lt__(object()) is NotImplemented
     assert os.fspath(fixed) == os.fspath(path)
-    fixed.put("first")
+    fixed.create("first")
     assert fixed.read_text() == "first"
-    fixed.put(b"second")
+    fixed.create(b"second")
     assert fixed.read_bytes() == b"second"
     assert isinstance(fixed.load(), Exception)
 

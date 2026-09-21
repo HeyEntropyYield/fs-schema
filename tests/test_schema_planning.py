@@ -144,7 +144,7 @@ def test_formatting_files_and_nested_directories_is_recursive_planning_without_i
     assert isinstance(part, FixedFile) and part.path == batch.path / "part-7.bin"
     assert isinstance(loose, FixedFile) and loose.path == root / "loose-9.dat"
     assert part.defn.schema is _decode_number and loose.defn.schema is _decode_number
-    assert all(hasattr(part, name) for name in ("read_bytes", "read_text", "load", "put"))
+    assert all(hasattr(part, name) for name in ("read_bytes", "read_text", "load", "create"))
 
     for concrete in (run, batch, part, loose):
         assert not isinstance(concrete, Match)

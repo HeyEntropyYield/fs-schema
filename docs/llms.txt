@@ -14,7 +14,7 @@ Core state model:
 - `File`, `Dir`, `FILES`: layout declaration. Exact names take `optional`; collections take `fmt`, `match`, `min`, `max`, `sort`.
 - Attribute/index access: generated, schema-aware traversal.
 - `Match.args`, `Match.kwargs`, `filter`, `find`, `where`, `get`: collection queries and captured-value access.
-- `put`, `load`, `raise_exn`, `path`: filesystem I/O.
+- `put`, `create`, `load`, `raise_exn`, `path`: filesystem I/O. Node writes are `create`. `fss.put` writes a temp file and replaces.
 - Optional Mashumaro integration: dataclass JSON, with an optional `orjson` backend.
 
 `Schema` values are validated filesystem states. `SchemaRoot[T]` values are

@@ -21,11 +21,15 @@ from quickstart import CuratedManifest, Manifest, curate
 PROJECT_ROOT = Path(__file__).parents[1]
 DOCS = (PROJECT_ROOT / "README.md", *sorted((PROJECT_ROOT / "docs").rglob("*.md")))
 
+# The locked API deliberately gives dynamic generated children a broad static
+# fallback. Suppress only diagnostics caused at that boundary; basedpyright still
+# checks names, assignments, return values, and ordinary Python around it.
 DYNAMIC_CHILD_CHECKS = """# pyright: reportAttributeAccessIssue=false, reportCallIssue=false
 # pyright: reportIndexIssue=false, reportGeneralTypeIssues=false
 # pyright: reportArgumentType=false, reportAssignmentType=false
 # pyright: reportUnknownMemberType=false
 # pyright: reportUnknownVariableType=false, reportUnknownArgumentType=false
+# pyright: reportRedeclaration=false
 """
 PYRIGHT_CONFIG = {
     "typeCheckingMode": "standard",

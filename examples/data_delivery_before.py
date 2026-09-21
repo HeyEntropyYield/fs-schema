@@ -28,6 +28,7 @@ paths, globs, ordering, and existence assumptions.
 
 # uv add "mashumaro[orjson]"
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -40,7 +41,7 @@ def download(source: str, target: Path) -> None:
     raise NotImplementedError(f"download {source} to {target}")
 
 
-def convert_parts(parts: tuple[Path, ...]) -> bytes:
+def convert_parts(parts: Sequence[Path]) -> bytes:
     raise NotImplementedError(f"convert {len(parts)} parts")
 
 

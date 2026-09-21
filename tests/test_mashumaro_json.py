@@ -1,6 +1,6 @@
-# pyright: reportPrivateUsage=false, reportUnknownMemberType=false
+# pyright: reportPrivateUsage=false, reportUnknownMemberType=false, reportArgumentType=false
 # pyright: reportAttributeAccessIssue=false, reportCallIssue=false
-# pyright: reportUnknownArgumentType=false, reportIndexIssue=false, reportAny=false
+# pyright: reportUnknownArgumentType=false, reportArgumentType=false, reportIndexIssue=false, reportAny=false
 import builtins
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -38,9 +38,9 @@ def test_plain_and_mixin_dataclasses_round_trip(tmp_path: Path) -> None:
         schema = {"fixed": fixed, "matched": matched, "mixin": mixin}
 
     root = Layout.relative_to(tmp_path)
-    root.fixed.put(Manifest("fixed", [Child(2)]))
-    root.matched.format(part=1).put(Manifest("matched", [Child(3)]))
-    root.mixin.put(MixinModel(4))
+    root.fixed.create(Manifest("fixed", [Child(2)]))
+    root.matched.format(part=1).create(Manifest("matched", [Child(3)]))
+    root.mixin.create(MixinModel(4))
 
     bound = fss.raise_mismatch(root.bind())
     assert fss.raise_exn(bound.fixed.load()) == Manifest("fixed", [Child(2)])
@@ -103,16 +103,18 @@ def test_raw_path_and_save_writes_take_precedence(tmp_path: Path) -> None:
             path.write_text(f"saved {self.value}")
 
     file = _schema.FixedFile(tmp_path / "nested" / "value.json", fss.File("value.json", schema=Manifest))
-    file.put(b"bytes")
+    file.create(b"bytes")
     assert file.read_bytes() == b"bytes"
-    file.put("text")
+    file.create("text")
     assert file.read_text() == "text"
     source = tmp_path / "source"
     source.write_bytes(b"copied")
-    file.put(source)
+    file.create(source)
     assert file.read_bytes() == b"copied"
-    file.put(Saved(3))
-    assert saved_to == [file.path]
+    file.create(Saved(3))
+    temporary = saved_to[0]
+    assert temporary.parent == file.path.parent and temporary.suffix == file.path.suffix
+    assert temporary != file.path and not temporary.exists()
     assert file.read_text() == "saved 3"
 
 
@@ -128,7 +130,7 @@ def test_json_validation_errors_leave_created_parent(tmp_path: Path) -> None:
     assert not target.exists()
 
     wrong_model = _schema.FixedFile(tmp_path / "model.json", fss.File("model.json", schema=int))
-    wrong_model.put(Manifest("value"))
+    wrong_model.create(Manifest("value"))
     error = wrong_model.load()
     assert isinstance(error, TypeError)
     assert "declared model int is not a dataclass" in str(error)

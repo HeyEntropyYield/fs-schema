@@ -1,3 +1,6 @@
+import os
+import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from shutil import copyfile
 from typing import Literal, TypeVar, cast
@@ -35,10 +38,28 @@ def exists_opt(path: PathIsh) -> Path | None:
     return candidate if candidate.exists() else None
 
 
-def put(path: PathIsh, data: Puttable) -> None:
+def put(path: PathIsh, data: Puttable | None = None) -> None:
     target = Path(path)
+    _commit(target, lambda temporary: _write_puttable(temporary, data))
+
+
+def _commit(target: Path, write: Callable[[Path], None]) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, name = tempfile.mkstemp(dir=target.parent, prefix=".", suffix=target.suffix)
+    os.close(descriptor)
+    temporary = Path(name)
+    try:
+        write(temporary)
+        os.replace(temporary, target)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+def _write_puttable(target: Path, data: Puttable | None) -> None:
     match data:
+        case None:
+            _ = target.write_bytes(b"")
         case bytes():
             _ = target.write_bytes(data)
         case str():

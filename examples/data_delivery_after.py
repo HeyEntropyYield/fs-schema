@@ -6,6 +6,7 @@
 
 # uv add "fs-schema[mashumaro,orjson]"
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,7 +19,7 @@ def download(source: str, target: Path) -> None:
     raise NotImplementedError(f"download {source} to {target}")
 
 
-def convert_parts(parts: tuple[Path, ...]) -> bytes:
+def convert_parts(parts: Sequence[Path]) -> bytes:
     raise NotImplementedError(f"convert {len(parts)} parts")
 
 
@@ -114,58 +115,55 @@ def pull(
     source: str,
     target: Path,
 ) -> DownloadedDelivery | fss.MismatchErr:
-    output = DownloadedDelivery.relative_to(target)
-    download(source, output.path)
-    return output.bind()
+    fs = DownloadedDelivery.relative_to(target)
+    download(source, fs.path)
+    return fs.bind()
 
 
 def validate(
     delivery: DownloadedDelivery,
 ) -> ValidatedDelivery | fss.MismatchErr:
-    output = ValidatedDelivery.relative_to(delivery.path)
+    fs = ValidatedDelivery.relative_to(delivery.path)
     manifest: DeliveryManifest = fss.raise_exn(delivery.manifest.load())
     parts = sum(len(day.parts) for day in delivery.batches.days)
     if parts != manifest.expected_parts:
         return fss.MismatchErr(f"expected {manifest.expected_parts} parts, got {parts}")
 
-    output.validation.put(ValidationReport(parts=parts))
-    return output.bind()
+    fs.validation.create(ValidationReport(parts=parts))
+    return fs.bind()
 
 
 def curate(
     delivery: ValidatedDelivery,
     target: Path,
 ) -> CuratedDataset | fss.MismatchErr:
-    output = CuratedDataset.relative_to(target)
+    fs = CuratedDataset.relative_to(target)
     manifest: DeliveryManifest = fss.raise_exn(delivery.manifest.load())
     validation: ValidationReport = fss.raise_exn(delivery.validation.load())
     parts = sum(len(day.parts) for day in delivery.batches.days)
     if parts != validation.parts:
         return fss.MismatchErr("delivery changed after validation")
 
-    partitions = 0
-    for source_day in delivery.batches.days:
-        source_parts = tuple(part.path for part in source_day.parts)
-        target_day = output.partitions.days.format(day=source_day.kwargs.day)
-        target_day.parts.format(part=0).put(convert_parts(source_parts))
-        partitions += 1
-
-    output.manifest.put(
-        CuratedManifest(
-            delivery_id=manifest.delivery_id,
-            partitions=partitions,
+    days = [
+        (
+            {"day": source_day.kwargs.day},
+            {"parts": [({"part": 0}, convert_parts([part.path for part in source_day.parts]))]},
         )
+        for source_day in delivery.batches.days
+    ]
+    fs.create(
+        partitions={"days": days}, manifest=CuratedManifest(delivery_id=manifest.delivery_id, partitions=len(days))
     )
-    return output.bind()
+    return fs.bind()
 
 
 def load(
     dataset: CuratedDataset,
 ) -> LoadedDataset | fss.MismatchErr:
-    output = LoadedDataset.relative_to(dataset.path)
+    fs = LoadedDataset.relative_to(dataset.path)
     parts = tuple(part.path for day in dataset.partitions.days for part in day.parts)
-    output.receipt.put(LoadReceipt(load_id=warehouse_load(parts)))
-    return output.bind()
+    fs.receipt.create(LoadReceipt(load_id=warehouse_load(parts)))
+    return fs.bind()
 
 
 def ingest(

@@ -18,6 +18,7 @@ from typing import (
     overload,
 )
 
+from plum import dispatch
 from typing_extensions import (
     Protocol,
     Self,
@@ -30,7 +31,7 @@ from typing_extensions import (
 from ._fmt import CaptureField, CaptureMap, CompiledFormat, FmtField, FmtLike, ParsedCaptures
 from ._ops import MismatchErr, is_mismatch, load, put
 from ._std_ext import CacheSeq
-from ._types import LoadSpec, Located, PathIsh, Puttable
+from ._types import CreateTop, CreateValue, LoadSpec, Located, PathIsh, Puttable
 
 # The concrete Schema subtype is preserved by root and bind operations.
 _S = TypeVar("_S", bound="Schema")
@@ -151,6 +152,7 @@ class Node:
 class File(Node, Generic[_L_co]):
     schema: LoadSpec[_L_co] | None = None
 
+    # Overloads are static. A runtime overload stack would replace the generated __init__.
     if TYPE_CHECKING:
 
         @overload
@@ -391,8 +393,9 @@ class FixedFile(_Fixed, Generic[_L_co]):
     def read_text(self) -> str:
         return self.path.read_text()
 
-    def put(self, data: Puttable) -> None:
+    def create(self, data: Puttable | None = None) -> Self:
         put(self.path, data)
+        return self
 
     def load(self) -> _L_co | Exception:
         schema = self.defn.schema
@@ -457,10 +460,19 @@ class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
     _matches: tuple[_M_co, ...]
     defn: _Defn_co
 
-    def __init__(self, path: PathIsh, matches: Sequence[_M_co], defn: _Defn_co) -> None:
+    stamps: dict[str, FmtField]
+
+    def __init__(
+        self,
+        path: PathIsh,
+        matches: Sequence[_M_co],
+        defn: _Defn_co,
+        stamps: Mapping[str, FmtField] | None = None,
+    ) -> None:
         self.path = Path(path)
         self._matches = tuple(matches)
         self.defn = defn
+        self.stamps = dict(stamps or {})
 
     @overload
     def __getitem__(self, index: int) -> _M_co: ...
@@ -471,7 +483,7 @@ class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
     @override
     def __getitem__(self, index: int | slice) -> _M_co | Self:
         if isinstance(index, slice):
-            return type(self)(self.path, self._matches[index], self.defn)
+            return type(self)(self.path, self._matches[index], self.defn, self.stamps)
         return self._matches[index]
 
     @override
@@ -483,6 +495,7 @@ class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
             self.path,
             tuple(match for match in self._matches if predicate(match.args, match.kwargs)),
             self.defn,
+            self.stamps,
         )
 
     def find(self, predicate: CapturePredicate, /) -> _M_co | None:
@@ -511,6 +524,17 @@ class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
                 return None
             return typing.cast(_Default, default)
 
+    @overload
+    def parse(self: "Matches[_FileMatch[_L], File[_L]]", basename: str) -> FixedFile[_L]: ...
+
+    @overload
+    def parse(self: "Matches[_DirMatch, DirDefn]", basename: str) -> "FixedDir": ...
+
+    def parse(self, basename: str) -> "FixedFile[object] | FixedDir":
+        if not is_safe_basename(basename) or defn_node(self.defn).select(basename) is None:
+            raise ValueError(f"member {basename!r} does not match")
+        return plan_fixed(self.path / basename, self.defn)
+
 
 class Template(Matches[_M_co, _Defn_co], Generic[_M_co, _Defn_co]):
     @overload
@@ -520,11 +544,7 @@ class Template(Matches[_M_co, _Defn_co], Generic[_M_co, _Defn_co]):
     def format(self: "Template[_DirMatch, DirDefn]", *args: FmtField, **kwargs: FmtField) -> "FixedDir": ...
 
     def format(self, *args: FmtField, **kwargs: FmtField) -> "FixedFile[object] | FixedDir":
-        node = defn_node(self.defn)
-        basename = _format_node(node, *args, **kwargs)
-        if not is_safe_basename(basename):
-            raise ValueError(f"formatted name must be a basename: {basename!r}")
-        return plan_fixed(self.path / basename, self.defn)
+        return format_any(self, *args, **kwargs)
 
 
 if TYPE_CHECKING:
@@ -545,6 +565,7 @@ else:
 class FixedDir(_Fixed):
     _children: tuple[BoundChild, ...]
     _lookup: Mapping[str, int]
+    stamps: dict[str, FmtField]
     defn: DirDefn
 
     def __init__(
@@ -552,11 +573,13 @@ class FixedDir(_Fixed):
         path: PathIsh,
         children: Sequence[BoundChild],
         defn: DirDefn,
+        stamps: Mapping[str, FmtField] | None = None,
     ) -> None:
         _Fixed.__init__(self, path)
         self._children = tuple(children)
         self._lookup = defn.lookup
         self.defn = defn
+        self.stamps = dict(stamps or {})
 
     def __iter__(self) -> Iterator[GetChild]:
         return iter(typing.cast(tuple[GetChild, ...], typing.cast(object, self._children)))
@@ -585,6 +608,18 @@ class FixedDir(_Fixed):
         if name != node.alias and name != _normalize_name(node.name):
             raise AttributeError(name)
         return typing.cast(GetChild, typing.cast(object, child))
+
+    @overload
+    def create(  # pyright: ignore[reportInconsistentOverload]
+        self,
+        spec: Mapping[str, CreateValue] | None = None,
+        /,
+        **children: CreateValue,
+    ) -> Self: ...
+
+    def create(self, spec: Mapping[str, CreateTop] | None = None, /, **children: CreateTop) -> Self:
+        write_plan(self, spec, **children)
+        return self
 
 
 class _DirMatch(_CaptureState, FixedDir):
@@ -640,9 +675,60 @@ def plan_fixed(path: Path, defn: DirDefn) -> FixedDir: ...
 
 
 def plan_fixed(path: Path, defn: Defn) -> FixedFile[object] | FixedDir:
-    if isinstance(defn, File):
-        return FixedFile(path, defn)
+    return _plan_fixed(path, defn)  # pyright: ignore[reportArgumentType]
+
+
+@dispatch
+def _plan_fixed(path: Path, defn: File) -> FixedFile:  # pyright: ignore[reportRedeclaration]
+    return FixedFile(path, defn)
+
+
+@dispatch
+def _plan_fixed(path: Path, defn: DirDefn) -> FixedDir:
     return FixedDir(path, _plan_children(path, defn), defn)
+
+
+def _stamp_tree(directory: FixedDir, stamps: Mapping[str, FmtField]) -> None:
+    directory.stamps = dict(stamps)
+    for child in directory._children:  # pyright: ignore[reportPrivateUsage]
+        if isinstance(child, FixedDir):
+            _stamp_tree(child, stamps)
+        elif isinstance(child, Matches):
+            child.stamps = dict(stamps)
+
+
+def format_any(
+    template: "Template[Match, Defn]",
+    *args: FmtField,
+    **kwargs: FmtField,
+) -> "FixedFile[object] | FixedDir":
+    for name, value in kwargs.items():
+        if name in template.stamps and template.stamps[name] != value:
+            raise ValueError(f"capture {name!r} disagrees with the enclosing stamp")
+    node = defn_node(template.defn)
+    basename = _format_node(node, *args, **kwargs)
+    if not is_safe_basename(basename):
+        raise ValueError(f"formatted name must be a basename: {basename!r}")
+    created = plan_fixed(template.path / basename, template.defn)
+    if isinstance(created, FixedDir):
+        _stamp_tree(created, {**template.stamps, **kwargs})
+    return created
+
+
+def write_plan(directory: FixedDir, spec: Mapping[str, CreateTop] | None = None, /, **children: CreateTop) -> None:
+    from ._create import apply_create
+
+    _reject_bound_create(directory)
+    merged: dict[str, CreateTop] = dict(spec or {})
+    if overlap := merged.keys() & children.keys():
+        raise TypeError(f"duplicate create keys: {sorted(overlap)}")
+    merged.update(children)
+    apply_create(directory, merged)
+
+
+def _reject_bound_create(node: object) -> None:
+    if isinstance(type(node), SchemaCls):
+        raise TypeError(f"create on bound {type(node).__name__}; use root()")
 
 
 def defn_node(defn: Defn) -> Node:
@@ -751,8 +837,16 @@ def _bind_fixed(path: Path, defn: DirDefn, cache: FsCache) -> FixedDir | Mismatc
 
 
 def _bind_fixed(path: Path, defn: Defn, cache: FsCache) -> FixedFile[object] | FixedDir | MismatchErr:
-    if isinstance(defn, File):
-        return FixedFile(path, defn)
+    return _bind_fixed_kind(path, defn, cache)  # pyright: ignore[reportArgumentType]
+
+
+@dispatch
+def _bind_fixed_kind(path: Path, defn: File, cache: FsCache) -> FixedFile:  # pyright: ignore[reportRedeclaration]
+    return FixedFile(path, defn)
+
+
+@dispatch
+def _bind_fixed_kind(path: Path, defn: DirDefn, cache: FsCache) -> FixedDir | MismatchErr:
     if is_mismatch(children := _bind_children(path, defn, cache)):
         return children
     return (defn.child_type or FixedDir)(path, children, defn)
@@ -828,8 +922,18 @@ def _bind_matches(defn: DirDefn, listing: Sequence[Path], cache: FsCache) -> Seq
 def _bind_matches(
     defn: Defn, listing: Sequence[Path], cache: FsCache
 ) -> Sequence[_FileMatch[object] | _DirMatch] | MismatchErr:
-    if isinstance(defn, File):
-        return _bind_file_matches(defn, listing)
+    return _bind_matches_kind(defn, listing, cache)  # pyright: ignore[reportArgumentType]
+
+
+@dispatch
+def _bind_matches_kind(  # pyright: ignore[reportRedeclaration]
+    defn: File, listing: Sequence[Path], cache: FsCache
+) -> object:
+    return _bind_file_matches(defn, listing)
+
+
+@dispatch
+def _bind_matches_kind(defn: DirDefn, listing: Sequence[Path], cache: FsCache) -> Sequence[_DirMatch] | MismatchErr:
     return _bind_dir_matches(defn, listing, cache)
 
 

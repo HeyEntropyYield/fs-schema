@@ -27,8 +27,8 @@ def main() -> None:
         bound = fss.raise_mismatch(Box.bind(root))
         assert bound.required.read_text() == "required"
         assert bound.items[0].kwargs.number == 2
-        planned = Box.relative_to(root / "new")
-        planned.items.format(number=3).put("planned")
+        fs = Box.relative_to(root / "new")
+        fs.items.format(number=3).create("planned")
         assert (root / "new" / "item-3.txt").read_text() == "planned"
     print(fss.__version__)
 

@@ -1,4 +1,4 @@
-# pyright: reportPrivateUsage=false, reportUnknownMemberType=false
+# pyright: reportPrivateUsage=false, reportUnknownMemberType=false, reportArgumentType=false, reportOptionalMemberAccess=false
 # pyright: reportUnknownArgumentType=false, reportUnknownVariableType=false
 # pyright: reportAttributeAccessIssue=false, reportCallIssue=false
 # pyright: reportAssignmentType=false, reportOptionalMemberAccess=false
@@ -43,8 +43,8 @@ def test_planned_optional_scalar_has_the_candidate_path(tmp_path: Path) -> None:
     assert isinstance(placed, SchemaRoot)
     assert placed.receipt.path == root / "receipt.json"
     assert placed.notes.path == root / "notes"
-    placed.manifest.put("{}")
-    placed.receipt.put("{}")
+    placed.manifest.create("{}")
+    placed.receipt.create("{}")
     assert (root / "manifest.json").read_text() == "{}"
     assert (root / "receipt.json").read_text() == "{}"
 
@@ -95,7 +95,7 @@ def test_write_optional_after_bind_goes_through_root(tmp_path: Path) -> None:
     _write_required(tmp_path)
     bound = Delivery.bind(tmp_path)
     assert type(bound) is Delivery and bound.receipt is None
-    bound.root().receipt.put("{}")
+    bound.root().receipt.create("{}")
     rebound = Delivery.bind(bound)
     assert type(rebound) is Delivery
     assert rebound.receipt is not None

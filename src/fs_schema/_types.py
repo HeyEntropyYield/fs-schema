@@ -6,6 +6,8 @@ from typing import ClassVar, TypeAlias, TypeVar
 
 from typing_extensions import Protocol, runtime_checkable
 
+from ._fmt import FmtField
+
 # The invariant load value links LoadSpec callables to low-level load results.
 LoadT = TypeVar("LoadT")
 
@@ -28,6 +30,11 @@ class DataclassInstance(Protocol):
 
 FileBody: TypeAlias = bytes | str | Path
 Puttable: TypeAlias = FileBody | HasSave | DataclassInstance
+
+CreateValue: TypeAlias = (
+    Puttable | Mapping[str, "CreateValue"] | Sequence[tuple[Mapping[str, FmtField], "CreateValue"]] | None
+)
+CreateTop: TypeAlias = Puttable | Mapping[str, object] | Sequence[object] | None
 
 # A class is resolved through the target file's format codec. With the
 # mashumaro extra, plain dataclasses work without mixins. A callable is an

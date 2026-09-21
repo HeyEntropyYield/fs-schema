@@ -59,8 +59,13 @@ def check() -> None:
     assert_type(template.get(default=1), _schema._FileMatch[object] | int)
     assert_type(template.get(4, None), _schema._FileMatch[object] | None)
     assert_type(template.format(part=1), _schema.FixedFile[object])
+    assert_type(template.format(part=1).create(b"x"), _schema.FixedFile[object])
+    assert_type(template.parse("part-1.txt"), _schema.FixedFile[object])
     assert_type(text_template.format(), _schema.FixedFile[str])
     assert_type(dir_template.format(), _schema.FixedDir)
+    assert_type(fixed.create(), _schema.FixedFile[object])
+    assert_type(fixed.create("x"), _schema.FixedFile[object])
+    assert_type(directory.create(), _schema.FixedDir)
     assert_type(loaded.load(), int | Exception)
     assert_type(directories.defn, _schema.DirDefn)
     assert_type(directories[0], _schema._DirMatch)
@@ -80,7 +85,7 @@ def check() -> None:
         schema = {"child": {"value": "value.txt"}}
 
     planned = Concrete.relative_to(Path("root"))
-    assert_type(planned, _schema.SchemaRoot[Concrete])
+    assert_type(planned.create(), _schema.SchemaRoot[Concrete])
     assert_type(planned.bind(), Concrete | fss.MismatchErr)
     assert_type(Concrete.RootT, type[_schema.SchemaRoot[_schema.Schema]])
     root_type: type[_schema.SchemaRoot[_schema.Schema]] = Concrete.RootT

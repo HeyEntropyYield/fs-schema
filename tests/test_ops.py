@@ -63,17 +63,22 @@ def test_put_covers_supported_bodies_and_dataclass_without_codec(
     with monkeypatch.context() as copy_patch:
         copy_patch.setattr(_ops, "copyfile", record_copy)
         _ops.put(copied, source)
-    assert copied_from == [(source, copied)]
+    assert copied_from[0][0] == source
+    assert Path(copied_from[0][1]).parent == copied.parent
+    assert copied_from[0][1] != copied
 
     saver = Saver()
     saved = tmp_path / "saved" / "value.txt"
     _ops.put(saved, saver)
-    assert saver.saved_to == saved
     assert saved.read_text() == "saved"
 
     model = tmp_path / "model" / "value.json"
     _ops.put(model, Model(1))
     assert model.read_text() == '{"value":1}'
+
+    empty = tmp_path / "empty" / "value.txt"
+    _ops.put(empty)
+    assert empty.is_file() and empty.read_bytes() == b""
 
 
 def test_load_returns_values_and_caught_exceptions(tmp_path: Path) -> None:
@@ -87,6 +92,20 @@ def test_load_returns_values_and_caught_exceptions(tmp_path: Path) -> None:
     result = _ops.load(path, broken)
     assert type(result) is ValueError
     assert str(result) == "bad data"
+
+
+def test_put_leaves_the_previous_file_when_the_write_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    target = tmp_path / "value.txt"
+    target.write_text("old")
+
+    def fail(*_args: object, **_kwargs: object) -> int:
+        raise OSError("disk")
+
+    monkeypatch.setattr(Path, "write_text", fail)
+    with pytest.raises(OSError, match="disk"):
+        _ops.put(target, "new")
+    assert target.read_text() == "old"
+    assert not any(path.name.startswith(".") for path in tmp_path.iterdir())
 
 
 def test_beartype_rejects_invalid_operation_inputs(tmp_path: Path) -> None:

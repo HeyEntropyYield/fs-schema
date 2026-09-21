@@ -28,6 +28,7 @@ dependencies = [
   "beartype>=0.23.0rc1",
   "glom",
   "parse",
+  "plum-dispatch>=2.10.1",
   "typing-extensions>=4.10",
 ]
 

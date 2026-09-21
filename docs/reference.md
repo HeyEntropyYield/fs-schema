@@ -18,7 +18,7 @@ import fs_schema as fss
 | Declarations | `File`, `Dir`, `FILES`, `dt` |
 | Paths and matches | `Located`, `Match`, `exists_opt` |
 | Result helpers | `MismatchErr`, `is_mismatch`, `raise_mismatch`, `raise_exn` |
-| Writing | `put` |
+| Writing | `put`, `create` |
 | Package metadata | `__version__` |
 
 All names in this table are available from `fs_schema`.
@@ -239,7 +239,7 @@ request_exists = delivery.transfer.request_json.exists()
 ```
 
 `Located` promises only `.path` and `__fspath__`. Concrete fixed values also
-have `exists()`. Fixed files add `read_bytes()`, `read_text()`, and `put()`.
+have `exists()`. Fixed files add `read_bytes()`, `read_text()`, and `create()`.
 
 Children support attribute access and exact item lookup. An explicit alias is
 used unchanged. Otherwise, each run outside `[A-Za-z0-9_]` in the disk name
@@ -289,6 +289,7 @@ lookup for names such as `"items"` that collide with mapping methods.
 | `where(*args, **kwargs)` | Matches whose captures have the positional prefix and named subset |
 | `get(index=0, default=...)` | Safely indexed match, or the supplied default when out of range |
 | `format(*args, **kwargs)` | Planned fixed file or recursively navigable fixed directory (format-backed collections only) |
+| `parse(basename)` | Planned member whose basename already matches; `ValueError` when it does not |
 
 A predicate receives the pair `(match.args, match.kwargs)`. Filtering returns a
 materialized result that keeps collection capabilities such as slicing and, for
@@ -373,39 +374,36 @@ dynamic static lookup loses that precision.
 
 ## Creating with schemas
 
-`relative_to` creates a planned layout without checking the filesystem. Fixed
-children already have paths. Planned collections are empty until binding; a
-format-backed collection can produce one concrete planned child, while a
-regex-only collection cannot be concretized without matching the filesystem.
-Writing and validation remain separate.
+`relative_to` picks a root and fills in the paths. It does not write anything. `create` writes that plan and hands it back. `bind` reads the tree and checks that it matches the schema.
+
+A file argument is whatever `put` accepts. A directory argument names child aliases. Leave an optional child out, or pass `None`, and it stays absent. An unknown alias raises `KeyError`. `create()` with no arguments creates that directory and every required child directory. It does not write files, and it does not create optional directories or collection members.
+
+You do not `create` a collection as a whole. `format(**captures)` names one member. When that member is a directory, the captures are remembered by every template under it. `parse(basename)` names one member from a filename you already have, and does not remember captures. `create` on the member writes it. A basename that does not fit raises `ValueError` there, rather than later at `bind`.
+
+A list of members can go in the spec. Each item is a `(captures, payload)` pair: the captures are the `format` arguments, and the payload is what you would pass to `create` on that member. A mapping of filename to body writes those names as given. The keys are filenames. If a key is a capture name instead of a filename, the error says so.
+
+If a file collection's captures were all remembered by an enclosing `format`, pass the file body by itself. A directory collection does not do that, because a mapping there already means filenames. A bare body that is still missing a capture raises `TypeError` and names the missing one. Two different values for the same capture raise `ValueError`.
 
 ```python
-planned: fss.SchemaRoot[Delivery] = Delivery.relative_to(
-    "/srv/curated/delivery-42"
-)
+fs: fss.SchemaRoot[Delivery] = Delivery.relative_to("/srv/curated/delivery-42")
 event_date = datetime(2026, 9, 10)
-planned_day = planned.batches.days.format(day=event_date)
-planned_part = planned_day.parts.format(part=0)
-
 manifest = Manifest("delivery-42", 1_000)
 parquet_bytes = b"parquet payload"
-planned.manifest.put(manifest)
-planned_part.put(parquet_bytes)
-
-created = planned.bind()
+fs.create(
+    manifest=manifest,
+    batches={"days": [({"day": event_date}, {"parts": [({"part": 0}, parquet_bytes)]})]},
+)
+another = fs.batches.days.format(day=datetime(2026, 9, 11))
+another.parts.format(part=0).create(b"next")
+created = fs.bind()
 ```
 
-`SchemaRoot[Delivery]` keeps the schema parameter, so `bind()` returns
-`Delivery | MismatchErr`. Calling `root()` on a bound schema creates a plan at
-the same path and intentionally drops the validation guarantee.
+`create` on a bound schema raises `TypeError`. Call `root()` and write on the plan. A bound file can still `create`; that is `put`.
 
-Every descendant of a rooted plan is also planned and derived from the same
-canonical declarations. Only the top-level `SchemaRoot` retains the schema/root
-token and exposes `bind()`; descendants do not independently bind or return to
-the root. Keep the root plan when that transition is needed.
+`bind()` returns the schema when the tree matches, and `MismatchErr` when it does not. `root()` starts a fresh plan at the same path. That plan has not been checked. `bind()` lives on the plan from `relative_to` or `root()`. Keep that plan if you will bind after writing a child.
 
 ```python
-reopened_plan: fss.SchemaRoot[Delivery] = delivery.root()
+fs: fss.SchemaRoot[Delivery] = delivery.root()
 ```
 
 ### Reading and writing
@@ -414,9 +412,10 @@ reopened_plan: fss.SchemaRoot[Delivery] = delivery.root()
 | --- | --- |
 | `file.read_bytes()` | `bytes` |
 | `file.read_text()` | `str` |
-| `file.put(data)` | Writes to the declared file |
+| `file.create(data=None)` | Atomic write of one file. Creates missing parents |
+| `dir.create(spec=None, **children)` | `mkdir` this directory and required child directories, then write the spec |
 | `file.load()` | Declared value or decoding exception |
-| `fss.put(path, data)` | Lower-level direct-path helper; creates missing parent directories |
+| `fss.put(path, data=None)` | Atomic file write. Creates missing parents |
 
 ```python
 manifest: Manifest = fss.raise_exn(delivery.manifest.load())
@@ -432,14 +431,9 @@ custom_manifest = fss.File(
 )
 ```
 
-`put` creates the target parent, then writes bytes or text, copies a source
-`Path`, or calls `save(Path)`. Other dataclass instances are encoded as JSON
-with Mashumaro. Install `fs-schema[mashumaro]` for the standard backend or
-`fs-schema[orjson]` to prefer its faster backend.
-`load()` returns decoding failures as values, and `raise_exn` raises one while
-preserving the successful result type.
+`put` writes one file and creates any missing parent directories. The finished contents replace the previous file in one step, so a reader sees either the old file or the new one. Pass `None`, or omit the body, and the file is empty. The body can be bytes, text, another file to copy, an object with `save`, or a dataclass stored as JSON. `save` is called on the file that then becomes the destination. Install `fs-schema[mashumaro]` for dataclass JSON, or `fs-schema[orjson]` to use its faster encoder. `load()` returns a decoding failure as a value. `raise_exn` raises that failure and keeps the success type.
 
 ```text
-put(path, data) -> None
+put(path, data=None) -> None
 raise_exn(value: T | Exception) -> T
 ```
