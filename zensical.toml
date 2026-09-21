@@ -7,6 +7,13 @@ repo_url = "https://github.com/HeyEntropyYield/fs-schema"
 repo_name = "HeyEntropyYield/fs-schema"
 edit_uri = "edit/master/docs/"
 extra_css = ["stylesheets/extra.css"]
+# Outside docs/. docs:build / docs:serve call require_fresh and stop if this drifts.
+watch = [
+  "CHANGELOG.md",
+  "README.md",
+  "examples/quickstart.py",
+  "run.sh",
+]
 
 nav = [
   { Home = "index.md" },
@@ -36,6 +43,10 @@ alternate_style = true
 combine_header_slug = true
 
 [project.markdown_extensions.md_in_html]
+
+[project.markdown_extensions]
+"scripts.docs_inputs" = {}
+
 
 [project.theme]
 language = "en"

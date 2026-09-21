@@ -45,7 +45,7 @@ Commands:
   docs:build                   Build the docs site into site/
   docs:serve                   Serve docs locally
  CI / maintainer
-  ci:tox                       Local tox matrix (no act). skip_missing_interpreters in tox.
+  ci:tox                       Local tox matrix in parallel (one worker per CPU)
   release:check                Build, inspect, and clean-install both local artifacts
   release:tag                  Create annotated vVERSION tag at clean release HEAD
   release:testpypi             Run local TestPyPI release

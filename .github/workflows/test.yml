@@ -33,11 +33,10 @@ jobs:
       - uses: ./.github/actions/setup-uv
       - run: ./run.sh uv:venv:sync @@ release:_check-ref @@ check
 
+  # Lint and the wheel build share no inputs. Tests wait for both.
   build-and-inspect-package:
     name: Build and inspect package
-    needs:
-      - runner
-      - check
+    needs: runner
     runs-on: ${{ needs.runner.outputs.runs-on }}
     outputs:
       artifact-name: ${{ steps.baipp.outputs.artifact-name }}
@@ -52,6 +51,7 @@ jobs:
     name: Tests (Python ${{ matrix.python-version }})
     needs:
       - runner
+      - check
       - build-and-inspect-package
     runs-on: ${{ needs.runner.outputs.runs-on }}
     strategy:
@@ -83,6 +83,7 @@ jobs:
     name: Source distribution
     needs:
       - runner
+      - check
       - build-and-inspect-package
     runs-on: ${{ needs.runner.outputs.runs-on }}
     steps:

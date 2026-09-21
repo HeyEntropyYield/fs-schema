@@ -1,17 +1,18 @@
 # fs-schema
 
 [![PyPI](https://img.shields.io/pypi/v/fs-schema)](https://pypi.org/project/fs-schema/)
-[![Status](https://img.shields.io/pypi/status/fs-schema)](https://pypi.org/project/fs-schema/)
 [![Python](https://img.shields.io/pypi/pyversions/fs-schema)](https://pypi.org/project/fs-schema/)
 [![License](https://img.shields.io/pypi/l/fs-schema)](https://github.com/HeyEntropyYield/fs-schema/blob/master/LICENSE)
 
 [![tests](https://github.com/HeyEntropyYield/fs-schema/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/HeyEntropyYield/fs-schema/actions/workflows/test.yml)
-[![coverage](https://img.shields.io/endpoint?url=https://github.com/HeyEntropyYield/fs-schema/releases/latest/download/coverage.json)](https://github.com/HeyEntropyYield/fs-schema/releases/latest)
+[![coverage](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fgithub.com%2FHeyEntropyYield%2Ffs-schema%2Freleases%2Flatest%2Fdownload%2Fcoverage.json&query=%24.message&label=coverage&color=brightgreen)](https://github.com/HeyEntropyYield/fs-schema/releases/latest)
 [![Typed](https://img.shields.io/badge/typing-typed-informational)](https://pypi.org/project/fs-schema/)
 [![docs](https://github.com/HeyEntropyYield/fs-schema/actions/workflows/docs.yml/badge.svg?branch=master)](https://heyentropyyield.github.io/fs-schema/)
 
-[![Release](https://img.shields.io/github/v/release/HeyEntropyYield/fs-schema)](https://github.com/HeyEntropyYield/fs-schema/releases)
+[![Status](https://img.shields.io/pypi/status/fs-schema)](https://pypi.org/project/fs-schema/)
+[![releases](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fapi.github.com%2Frepos%2FHeyEntropyYield%2Ffs-schema%2Freleases%3Fper_page%3D100&query=%24.length&label=releases)](https://github.com/HeyEntropyYield/fs-schema/releases)
 <!-- [![Downloads](https://img.shields.io/pypi/dm/fs-schema)](https://pypistats.org/packages/fs-schema) -->
+<!-- [![stars](https://img.shields.io/github/stars/HeyEntropyYield/fs-schema)](https://github.com/HeyEntropyYield/fs-schema/stargazers) -->
 
 Typed schemas for filesystem layouts. Dataclass-like declarations turn directory
 contracts into validated, navigable Python values.

@@ -350,8 +350,8 @@ def test_main_check_version_reports_existing_package(monkeypatch: pytest.MonkeyP
 def test_changelog_notes_extracts_named_section(tmp_path: Path) -> None:
     path = tmp_path / "CHANGELOG.md"
     path.write_text("# Changelog\n\n## v2.0\n\n- new\n\n## v1.0\n\n- old\n")
-    assert changelog_notes(version=Version("2.0"), changelog_path=path) == "## v2.0\n\n- new\n"
-    assert changelog_notes(version=Version("1.0"), changelog_path=path) == "## v1.0\n\n- old\n"
+    assert changelog_notes(version=Version("2.0"), changelog_path=path) == "- new\n"
+    assert changelog_notes(version=Version("1.0"), changelog_path=path) == "- old\n"
     _error("missing", changelog_notes, version=Version("3.0"), changelog_path=path)
 
 

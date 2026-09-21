@@ -4,6 +4,15 @@ on:
   push:
     branches:
       - master
+    # Static. docs:build calls require_fresh and stops if the snippet closure is missing here.
+    paths:
+      - .github/workflows/docs.yml
+      - CHANGELOG.md
+      - README.md
+      - docs/**
+      - examples/quickstart.py
+      - run.sh
+      - zensical.toml
   workflow_dispatch:
 
 permissions:

@@ -4,11 +4,16 @@
 # pyright: reportUnknownVariableType=false, reportUnknownArgumentType=false
 # pyright: reportAssignmentType=false
 
+import io
 import json
 import re
 import subprocess
 import tempfile
 from pathlib import Path
+
+import pytest
+from markdown import Markdown
+from scripts.docs_inputs import DocsInputError, external_inputs, main, makeExtension, require_fresh, sync
 
 import fs_schema as fss
 from quickstart import CuratedManifest, Manifest, curate
@@ -88,6 +93,61 @@ def test_embedded_quickstart_runs_end_to_end(tmp_path: Path) -> None:
     manifest: CuratedManifest = fss.raise_exn(curated.manifest.load())
     assert manifest == CuratedManifest("delivery-1", partitions=1)
     assert curated.days[0].parts[0].read_bytes() == b"first\nsecond"
+
+
+def test_generate_directive_writes_missing_output(tmp_path: Path) -> None:
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (tmp_path / "zensical.toml").write_text("[project]\nsite_name = 'x'\n")
+    tool = tmp_path / "tool.sh"
+    tool.write_text("#!/bin/sh\necho hello\n")
+    tool.chmod(0o755)
+    (docs / "index.md").write_text('<!-- generate: docs/out.txt from tool.sh -->\n--8<-- "docs/out.txt"\n')
+    assert external_inputs(tmp_path) == ("tool.sh",)
+    sync(tmp_path)
+    assert (docs / "out.txt").read_text() == "hello\n"
+
+
+def test_unknown_snippet_fails(tmp_path: Path) -> None:
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (tmp_path / "zensical.toml").write_text("[project]\nsite_name = 'x'\n")
+    (docs / "index.md").write_text('--8<-- "missing.md"\n')
+    with pytest.raises(DocsInputError, match="snippet not found"):
+        external_inputs(tmp_path)
+
+
+def test_require_fresh_accepts_this_repo() -> None:
+    require_fresh()
+    assert main([]) == 0
+
+
+def test_main_reports_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail(_root: Path = PROJECT_ROOT) -> None:
+        raise DocsInputError("stale")
+
+    stderr = io.StringIO()
+    monkeypatch.setattr("scripts.docs_inputs.require_fresh", fail)
+    assert main([], stderr=stderr) == 1
+    assert stderr.getvalue() == "error: stale\n"
+
+
+def test_require_fresh_stops_on_stale_watch(tmp_path: Path) -> None:
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "index.md").write_text('--8<-- "README.md"\n')
+    (tmp_path / "README.md").write_text("hi\n")
+    (tmp_path / "zensical.toml").write_text("[project]\nwatch = []\n")
+    workflow = tmp_path / ".github/workflows"
+    workflow.mkdir(parents=True)
+    (workflow / "docs.yml").write_text("on:\n  push:\n    paths:\n      - docs/**\n")
+    with pytest.raises(DocsInputError, match=r"zensical\.toml watch"):
+        require_fresh(tmp_path)
+
+
+def test_extension_regenerates_included_output() -> None:
+    Markdown(extensions=[makeExtension()]).convert("page")
+    test_readme_embeds_current_run_help()
 
 
 def test_readme_embeds_current_run_help() -> None:

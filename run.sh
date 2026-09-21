@@ -186,30 +186,22 @@ pretty(){ fmt || return $?; lint --fix "$@" || return $?; }
 
 ## Docs
 
-# @describe Refresh docs/run-help.txt from ./run.sh help
-docs:_sync-help(){
-  local target="$ROOT_DIR/docs/run-help.txt" temporary
-  temporary="$(mktemp)" || return $?
-  if "$ROOT_DIR/run.sh" help > "$temporary" 2>&1 && cat "$temporary" > "$target"; then
-    rm -f "$temporary"
-    return 0
-  fi
-  rm -f "$temporary"
-  return 1
+docs:_run(){
+  PYTHONPATH="$ROOT_DIR${PYTHONPATH:+:$PYTHONPATH}" _run "$@"
 }
+
+docs:_fresh(){ _beartype "$ROOT_DIR/scripts/docs_inputs.py"; }
 
 # @describe Build the docs site into site/
 docs:build(){
-  _need_venv || return $?
-  docs:_sync-help || return $?
-  zensical build --clean "$@" || return $?
+  docs:_fresh || return $?
+  docs:_run zensical build --clean "$@" || return $?
 }
 
 # @describe Serve docs locally
 docs:serve(){
-  _need_venv || return $?
-  docs:_sync-help || return $?
-  zensical serve "$@" || return $?
+  docs:_fresh || return $?
+  docs:_run zensical serve "$@" || return $?
 }
 
 # @describe Run docs.yml locally via act
@@ -258,19 +250,19 @@ Path("coverage.json").write_text(
 '
 }
 
-# @describe Local tox matrix (no act). skip_missing_interpreters in tox.
+# @describe Local tox matrix in parallel (one worker per CPU)
 # @arg rest~ extra tox args
 ci:tox(){
   local envs
   envs="$(echo "$PYTHON_VERSIONS" | tr ' ' ',')"
   _need_venv || return $?
-  tox run -e "$envs" "$@" || return $?
+  tox run-parallel -e "$envs" "$@" || return $?
   ci:_coverage || return $?
 }
 
 # @describe Run scripts/release.py under the beartype launcher
 # @arg rest~ release.py argv
-_release(){ _need_venv || return $?; "$ROOT_DIR/scripts/beartype" "$ROOT_DIR/scripts/release.py" "$@"; }
+_release(){ _beartype "$ROOT_DIR/scripts/release.py" "$@"; }
 
 # @describe Build, inspect, and clean-install both local artifacts
 release:check(){
@@ -518,6 +510,13 @@ _need_venv(){
   fi
   PATH="$VENV_BIN:$PATH"
 }
+
+_run(){
+  _need_venv || return $?
+  "$@"
+}
+
+_beartype(){ _run "$ROOT_DIR/scripts/beartype" "$@"; }
 
 # @describe Run a workflow locally via act
 # @arg workflow! yaml basename under .github/workflows/

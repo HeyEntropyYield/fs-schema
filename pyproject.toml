@@ -184,6 +184,7 @@ skip_covered = true
 
 # env_list fallback; GHA matrix comes from package classifiers (baipp).
 # Coverage measured on oldest + newest only (Hynek: not every interpreter).
+# Local matrix: ./run.sh ci:tox → tox run-parallel (CPU count). GHA stays one env per job.
 [tool.tox]
 requires = ["tox>=4.34", "tox-uv>=1.23"]
 env_list = ["3.10", "3.11", "3.12", "3.13", "3.14"]

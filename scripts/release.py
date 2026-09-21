@@ -354,10 +354,11 @@ def changelog_notes(
     start = next((index for index, line in enumerate(lines) if line == heading), None)
     if start is None:
         raise ReleaseError(f"{heading} missing")
+    start += 1
     stop = start + 1
     while stop < len(lines) and not lines[stop].startswith("## "):
         stop += 1
-    return "\n".join(lines[start:stop]).rstrip() + "\n"
+    return "\n".join(lines[start:stop]).strip() + "\n"
 
 
 def is_prerelease(*, metadata_path: Path = PYPROJECT) -> bool:
