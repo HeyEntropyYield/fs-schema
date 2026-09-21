@@ -1,6 +1,6 @@
 [project]
 name = "fs-schema"
-version = "0.4.5"
+version = "0.4.6"
 requires-python = ">=3.10"
 
 description = "Strongly typed Python schemas for binding and validating filesystem layouts"
