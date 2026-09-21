@@ -25,6 +25,7 @@ rooted write destinations not yet validated.
 
 - [API reference Markdown](https://raw.githubusercontent.com/HeyEntropyYield/fs-schema/master/docs/reference.md): Declaration, binding, rooted creation, node access, templates, I/O, and errors.
 - [Tutorial Markdown](https://raw.githubusercontent.com/HeyEntropyYield/fs-schema/master/docs/tutorial.md): Data-delivery pipeline before and after filesystem types.
+- [Changelog Markdown](https://raw.githubusercontent.com/HeyEntropyYield/fs-schema/master/CHANGELOG.md): Public API by release tag.
 
 ## Code
 

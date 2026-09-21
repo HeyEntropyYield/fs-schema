@@ -12,6 +12,7 @@ Maintainer:
   ./run.sh gh:docs [ref]
   ./run.sh gh:publish:testpypi [ref]
   ./run.sh gh:publish:pypi
+  ./run.sh gh:release
   ./run.sh release:testpypi
   ./run.sh release:pypi
 
@@ -21,12 +22,12 @@ MRE: ./run.sh docker:check / docker:test
 Commands:
   help                         Usual path + command list
   pkg:version                  Read or update the package version and lockfile
-  pkg:bump                     Update version and lockfile, then print the required commit subject
+  pkg:bump                     Update version, lockfile, & commit
   pkg:build                    Build sdist and wheel into dist/
  Setup
   setup:install-pre-commit     Install git hooks (once per clone; sync first)
-  setup:shellcheck             Install pinned shellcheck if PATH copy is missing or the wrong version
-  setup:check-image            Assert /etc/os-release and apt pkgs match versions/ubuntu / versions/apt
+  setup:shellcheck             Install pinned shellcheck if not found
+  setup:check-image            Assert /etc/os-release and apt pkgs match pinned versions
   setup:check-installs         Checks all host deps present
  Dep management
   uv:venv:sync                 Sync .venv from uv.lock (no resolve)
@@ -36,7 +37,7 @@ Commands:
   lint                         ruff check + shellcheck
   typecheck                    basedpyright
   check                        pre-commit + docs build
-  tests                        pytest against the installed package (`python -I`: no cwd on sys.path)
+  tests                        pytest against the installed package
  Dev: formatters
   fmt                          ruff format
   pretty                       fmt + ruff check --fix
@@ -46,13 +47,14 @@ Commands:
  CI / maintainer
   ci:tox                       Local tox matrix (no act). skip_missing_interpreters in tox.
   release:check                Build, inspect, and clean-install both local artifacts
-  release:tag                  Create the exact annotated vVERSION tag at a clean release HEAD
-  release:testpypi             Run the complete local TestPyPI release with an API token
-  release:pypi                 Run the complete local tagged PyPI release with an API token
+  release:tag                  Create annotated vVERSION tag at clean release HEAD
+  release:testpypi             Run local TestPyPI release
+  release:pypi                 Run local tagged PyPI release
   gh:ci                        Dispatch and watch remote test.yml
   gh:docs                      Dispatch and watch remote docs.yml
-  gh:publish:testpypi          Dispatch, test, publish, and verify through GitHub OIDC
-  gh:publish:pypi              Dispatch tagged production publish, verify, and create GitHub Release
+  gh:publish:testpypi          Dispatch, test, publish, and verify through gh
+  gh:release                   Create gh release for current vVERSION tag
+  gh:publish:pypi              Dispatch, test, publish, and verify prod release through gh
  Docker
   docker:build                 Build image
   docker:check                 GHA Checks job (same ./run.sh chain)

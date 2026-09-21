@@ -1,5 +1,18 @@
 # fs-schema
 
+[![PyPI](https://img.shields.io/pypi/v/fs-schema)](https://pypi.org/project/fs-schema/)
+[![Status](https://img.shields.io/pypi/status/fs-schema)](https://pypi.org/project/fs-schema/)
+[![Python](https://img.shields.io/pypi/pyversions/fs-schema)](https://pypi.org/project/fs-schema/)
+[![License](https://img.shields.io/pypi/l/fs-schema)](https://github.com/HeyEntropyYield/fs-schema/blob/master/LICENSE)
+
+[![tests](https://github.com/HeyEntropyYield/fs-schema/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/HeyEntropyYield/fs-schema/actions/workflows/test.yml)
+[![coverage](https://img.shields.io/endpoint?url=https://github.com/HeyEntropyYield/fs-schema/releases/latest/download/coverage.json)](https://github.com/HeyEntropyYield/fs-schema/releases/latest)
+[![Typed](https://img.shields.io/badge/typing-typed-informational)](https://pypi.org/project/fs-schema/)
+[![docs](https://github.com/HeyEntropyYield/fs-schema/actions/workflows/docs.yml/badge.svg?branch=master)](https://heyentropyyield.github.io/fs-schema/)
+
+[![Release](https://img.shields.io/github/v/release/HeyEntropyYield/fs-schema)](https://github.com/HeyEntropyYield/fs-schema/releases)
+<!-- [![Downloads](https://img.shields.io/pypi/dm/fs-schema)](https://pypistats.org/packages/fs-schema) -->
+
 Typed schemas for filesystem layouts. Dataclass-like declarations turn directory
 contracts into validated, navigable Python values.
 
@@ -63,5 +76,13 @@ use Mashumaro for JSON; install the `mashumaro` or faster `orjson` extra.
 
 [API reference](https://heyentropyyield.github.io/fs-schema/reference/) ·
 [Tutorial](https://heyentropyyield.github.io/fs-schema/tutorial/) ·
+[Changelog](https://heyentropyyield.github.io/fs-schema/changelog/) ·
 [Source](https://github.com/HeyEntropyYield/fs-schema) ·
 [MIT LICENSE](https://heyentropyyield.github.io/fs-schema/LICENSE)
+
+<details markdown="1">
+<summary>Changelog</summary>
+
+--8<-- "CHANGELOG.md"
+
+</details>

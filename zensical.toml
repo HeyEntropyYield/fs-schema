@@ -12,6 +12,7 @@ nav = [
   { Home = "index.md" },
   { "API reference" = "reference.md" },
   { Tutorial = "tutorial.md" },
+  { Changelog = "changelog.md" },
 ]
 
 [project.markdown_extensions.toc]
@@ -33,6 +34,8 @@ pygments_lang_class = true
 [project.markdown_extensions.pymdownx.tabbed]
 alternate_style = true
 combine_header_slug = true
+
+[project.markdown_extensions.md_in_html]
 
 [project.theme]
 language = "en"

@@ -51,6 +51,7 @@ Maintainer:
   ./run.sh gh:docs [ref]
   ./run.sh gh:publish:testpypi [ref]
   ./run.sh gh:publish:pypi
+  ./run.sh gh:release
   ./run.sh release:testpypi
   ./run.sh release:pypi
 
@@ -73,11 +74,11 @@ EOF
 # @describe Read or update the package version and lockfile
 pkg:version(){ uv version "$@"; }
 
-# @describe Update version and lockfile, then print the required commit subject
+# @describe Update version, lockfile, & commit
 # @arg version! PEP 440 package version
 pkg:bump(){
   _require_clean || return $?
-  [ $# -eq 1 ] || { echo "usage: ./run.sh pkg:bump VERSION" >&2; return 2; }
+  [ $# -eq 1 ] || { : "usage: ./run.sh pkg:bump VERSION"; return 2; }
   uv version "$1" || return $?
   git add pyproject.toml uv.lock || return $?
   git commit -m "v$(uv version --short)" && return 0
@@ -98,7 +99,7 @@ setup:install-pre-commit(){
   pre-commit install --hook-type pre-commit --hook-type commit-msg --hook-type pre-push || return $?
 }
 
-# @describe Install pinned shellcheck if PATH copy is missing or the wrong version
+# @describe Install pinned shellcheck if not found
 setup:shellcheck(){
   local dest arch
   if command -v shellcheck >/dev/null \
@@ -112,14 +113,14 @@ setup:shellcheck(){
     | tar -xJ -C "$dest" --strip-components=1 --wildcards '*/shellcheck'
 }
 
-# @describe Assert /etc/os-release and apt pkgs match versions/ubuntu / versions/apt
+# @describe Assert /etc/os-release and apt pkgs match pinned versions
 setup:check-image(){
   local got pkg
   got="$(. /etc/os-release && printf '%s' "$VERSION_ID")"
-  [ "$got" = "$UBUNTU_PIN" ] || { echo "os $got != pin $UBUNTU_PIN (versions/ubuntu)" >&2; return 1; }
+  [ "$got" = "$UBUNTU_PIN" ] || { : "os $got != pin $UBUNTU_PIN (versions/ubuntu)"; return 1; }
   while read -r pkg; do
     [ -n "$pkg" ] || continue
-    dpkg-query -W "$pkg" >/dev/null 2>&1 || { echo "missing apt $pkg (versions/apt)" >&2; return 1; }
+    dpkg-query -W "$pkg" >/dev/null 2>&1 || { : "missing apt $pkg (versions/apt)"; return 1; }
   done < "$ROOT_DIR/versions/apt"
 }
 
@@ -172,7 +173,7 @@ check(){
   docs:build || return $?
 }
 
-# @describe pytest against the installed package (`python -I`: no cwd on sys.path)
+# @describe pytest against the installed package
 tests(){ _need_venv || return $?; python -I -m pytest "$@" || return $?; }
 
 ## Dev: formatters
@@ -238,6 +239,23 @@ ci:_coverage(){
     coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY" || return $?
   fi
   coverage report || return $?
+  _coverage_badge || return $?
+}
+
+# @describe Write shields.io endpoint JSON from the combined coverage total
+_coverage_badge(){
+  local pct
+  pct="$(coverage report --format=total)" || return $?
+  COVERAGE_PCT="$pct" python -c '
+import json, os
+from pathlib import Path
+pct = int(round(float(os.environ["COVERAGE_PCT"])))
+color = "brightgreen" if pct >= 95 else "yellow" if pct >= 80 else "red"
+Path("coverage.json").write_text(
+    json.dumps({"schemaVersion": 1, "label": "coverage", "message": f"{pct}%", "color": color}) + "\n",
+    encoding="utf-8",
+)
+'
 }
 
 # @describe Local tox matrix (no act). skip_missing_interpreters in tox.
@@ -283,7 +301,7 @@ release:_check-range(){ _release check-range "$@"; }
 # @arg tag Tag name to validate; defaults to vVERSION
 release:_check-tag(){ _release check-tag "$@"; }
 
-# @describe Create the exact annotated vVERSION tag at a clean release HEAD
+# @describe Create annotated vVERSION tag at clean release HEAD
 release:tag(){
   local version tag
   _need_venv || return $?
@@ -291,15 +309,21 @@ release:tag(){
   release:_check-ref --release || return $?
   version="$(_release version)" || return $?
   tag="v$version"
-  git show-ref --tags --verify --quiet "refs/tags/$tag" && { echo "tag $tag already exists" >&2; return 1; }
+  git show-ref --tags --verify --quiet "refs/tags/$tag" && { : "tag $tag already exists"; return 1; }
   git tag -a "$tag" -m "$tag" || return $?
   release:_check-tag "$tag" || { git tag -d "$tag" >/dev/null; return 1; }
-  echo "created $tag; push it with: git push origin $tag"
+  : "created $tag; push it with: git push origin $tag"
 }
 
 # @describe Require local version not behind an index. exists vs unpublished on stdout.
 # @arg target[pypi|testpypi]!
 release:_check-version(){ _release check-version "$@"; }
+
+# @describe Print the latest release CHANGELOG.md section
+release:_notes(){ _release notes; }
+
+# @describe yes if the current package version is a PEP 440 pre-release
+release:_is-prerelease(){ _release is-prerelease; }
 
 # @describe Download from an index, clean-install, and exercise public API
 # @arg target[pypi|testpypi]!
@@ -309,18 +333,18 @@ release:_verify(){
   local attempt err=""
   _need_venv || return $?
   for attempt in {1..12}; do
-    echo "release:_verify $*: attempt $attempt/12" >&2
+    : "release:_verify $*: attempt $attempt/12"
     err="$(_release smoke-index "$@" 2>&1)" && return 0
     [ "$attempt" -eq 12 ] || sleep 10
   done
-  echo "$err"
+  : "$err"
   return 1
 }
 
-# @describe Run the complete local TestPyPI release with an API token
+# @describe Run local TestPyPI release
 release:testpypi(){ _publish_local testpypi; }
 
-# @describe Run the complete local tagged PyPI release with an API token
+# @describe Run local tagged PyPI release
 release:pypi(){ _publish_local pypi; }
 
 # @describe Dispatch and watch remote test.yml
@@ -331,7 +355,7 @@ gh:ci(){ _workflow_remote test.yml "${1:-$BRANCH}"; }
 # @arg ref branch, tag, or SHA; defaults to current branch
 gh:docs(){ _workflow_remote docs.yml "${1:-$BRANCH}"; }
 
-# @describe Dispatch, test, publish, and verify through GitHub OIDC
+# @describe Dispatch, test, publish, and verify through gh
 # @arg ref branch, tag, or SHA; defaults to current branch
 gh:publish:testpypi(){
   local ref="${1:-$BRANCH}"
@@ -341,7 +365,33 @@ gh:publish:testpypi(){
   _workflow_remote publish.yml "$ref" target=testpypi || return $?
 }
 
-# @describe Dispatch tagged production publish, verify, and create GitHub Release
+# @describe Create gh release for current vVERSION tag
+gh:release(){
+  local version tag notes extra=() assets=()
+  _need_venv || return $?
+  _has_cmd gh || return $?
+  gh auth status >/dev/null || return $?
+  _require_release_tag || return $?
+  version="$(_release version)" || return $?
+  tag="v$version"
+  notes="$(mktemp)" || return $?
+  _release notes > "$notes" || { rm -f "$notes"; return 1; }
+  pre="$(_release is-prerelease)" || { rm -f "$notes"; return 1; }
+  [ "$pre" = yes ] && extra=(--prerelease)
+  [ -f "$ROOT_DIR/coverage.json" ] && assets=("$ROOT_DIR/coverage.json")
+  if gh release view "$tag" >/dev/null 2>&1; then
+    : "GitHub Release $tag exists"
+    if [ "${#assets[@]}" -gt 0 ]; then
+      gh release upload "$tag" "${assets[@]}" --clobber || { rm -f "$notes"; return 1; }
+    fi
+    rm -f "$notes"
+    return 0
+  fi
+  gh release create "$tag" --verify-tag --notes-file "$notes" "${extra[@]}" "${assets[@]}" || { rm -f "$notes"; return 1; }
+  rm -f "$notes"
+}
+
+# @describe Dispatch, test, publish, and verify prod release through gh
 gh:publish:pypi(){
   local tag
   _require_release_tag || return $?
@@ -439,7 +489,7 @@ docker:matrix(){
     PYTHON_VERSION="$py" docker:test || failed="$failed $py"
   done
   if [ -n "$failed" ]; then
-    echo "docker:matrix failed:$failed" >&2
+    : "docker:matrix failed:$failed"
     return 1
   fi
 }
@@ -456,14 +506,14 @@ _need_shellcheck(){
   setup:shellcheck || return $?
   _has_cmd shellcheck || return $?
   got="$(shellcheck --version | awk '/^version:/{print $2; exit}')"
-  [ "$got" = "$SHELLCHECK_PIN" ] || { echo "shellcheck $got != pin $SHELLCHECK_PIN" >&2; return 1; }
+  [ "$got" = "$SHELLCHECK_PIN" ] || { : "shellcheck $got != pin $SHELLCHECK_PIN"; return 1; }
 }
 
 # @describe Put .venv/bin on PATH, or fail if missing
 _need_venv(){
   local -; set +x
   if [ ! -x "$VENV_BIN/python" ]; then
-    echo "no .venv; ./run.sh uv:venv:sync" >&2
+    : "no .venv; ./run.sh uv:venv:sync"
     return 1
   fi
   PATH="$VENV_BIN:$PATH"
@@ -502,7 +552,7 @@ _workflow_remote(){
     sleep 2
   done
   if [ "$run_id" = 0 ] || [ "$run_id" = "$before" ]; then
-    echo "could not find dispatched $workflow run" >&2
+    : "could not find dispatched $workflow run"
     return 1
   fi
   gh run watch "$run_id" --compact --exit-status || return $?
@@ -510,7 +560,7 @@ _workflow_remote(){
 
 # @describe Fail unless the working tree is clean
 _require_clean(){
-  [ -z "$(git status --porcelain)" ] || { echo "working tree is not clean" >&2; return 1; }
+  [ -z "$(git status --porcelain)" ] || { : "working tree is not clean"; return 1; }
 }
 
 # @describe Fail unless HEAD is a tagged release commit present on origin
@@ -522,7 +572,7 @@ _require_release_tag(){
   release:_check-tag "$tag" || return $?
   remote="$(git ls-remote origin "refs/tags/$tag^{}" | cut -f1)" || return $?
   [ -n "$remote" ] || remote="$(git ls-remote origin "refs/tags/$tag" | cut -f1)" || return $?
-  [ "$remote" = "$(git rev-parse HEAD)" ] || { echo "remote $tag does not point to HEAD" >&2; return 1; }
+  [ "$remote" = "$(git rev-parse HEAD)" ] || { : "remote $tag does not point to HEAD"; return 1; }
 }
 
 # @describe Fail unless REF is HEAD and origin/REF matches HEAD
@@ -530,9 +580,9 @@ _require_release_tag(){
 _require_remote_head(){
   local ref="$1" remote
   _require_clean || return $?
-  [ "$(git rev-parse "$ref^{commit}")" = "$(git rev-parse HEAD)" ] || { echo "$ref does not point to HEAD" >&2; return 1; }
+  [ "$(git rev-parse "$ref^{commit}")" = "$(git rev-parse HEAD)" ] || { : "$ref does not point to HEAD"; return 1; }
   remote="$(git ls-remote origin "refs/heads/$ref" | cut -f1)" || return $?
-  [ "$remote" = "$(git rev-parse HEAD)" ] || { echo "remote branch $ref does not point to HEAD" >&2; return 1; }
+  [ "$remote" = "$(git rev-parse HEAD)" ] || { : "remote branch $ref does not point to HEAD"; return 1; }
 }
 
 # @describe Local uv publish + smoke-index verify
@@ -558,23 +608,21 @@ _publish_local(){
   status="$(_release check-version "$target")" || return $?
   printf '%s\n' "$status"
   if [[ "$status" == *" unpublished "* ]]; then
-    [ -n "${UV_PUBLISH_TOKEN:-}" ] || { echo "UV_PUBLISH_TOKEN is required for local publication" >&2; return 1; }
+    [ -n "${UV_PUBLISH_TOKEN:-}" ] || { : "UV_PUBLISH_TOKEN is required for local publication"; return 1; }
     case "$UV_PUBLISH_TOKEN" in
       pypi-*) ;;
-      *) echo "UV_PUBLISH_TOKEN must be a PyPI API token (starting with pypi-), not a GitHub PAT" >&2; return 1 ;;
+      *) : "UV_PUBLISH_TOKEN must be a PyPI API token (starting with pypi-), not a GitHub PAT"; return 1 ;;
     esac
     uv publish --publish-url "$publish_url" --check-url "$check_url" dist/* || return $?
   elif [[ "$status" == *" exists "* ]]; then
-    echo "already on $target, skip publish" >&2
+    : "already on $target, skip publish"
   else
-    echo "unexpected check-version: $status" >&2
+    : "unexpected check-version: $status"
     return 1
   fi
   release:_verify "$target" || return $?
   if [ "$target" = pypi ]; then
-    version="$(_release version)" || return $?
-    tag="v$version"
-    gh release create "$tag" --verify-tag --generate-notes --prerelease || return $?
+    gh:release || return $?
   fi
 }
 

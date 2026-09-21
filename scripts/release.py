@@ -9,6 +9,8 @@ Usage:
   release.py check-version <target>
   release.py smoke <path_or_spec> [--expected=VERSION]
   release.py smoke-index <target>
+  release.py notes
+  release.py is-prerelease
 
 Options:
   --release            Require a version-only release commit.
@@ -40,6 +42,7 @@ PROJECT_ROOT = REPO
 PYPROJECT = REPO / "pyproject.toml"
 LOCKFILE = REPO / "uv.lock"
 SMOKE = REPO / "examples" / "smoke.py"
+CHANGELOG = REPO / "CHANGELOG.md"
 VERSION_PATHS = {"pyproject.toml", "uv.lock"}
 VERSION_SUBJECT = re.compile(r"^v\d")
 ZERO_SHA = "0" * 40
@@ -336,6 +339,31 @@ def smoke_index(target: str, *, runner: Runner | None = None) -> str:
     return installed
 
 
+def changelog_notes(
+    *,
+    version: Version | None = None,
+    changelog_path: Path = CHANGELOG,
+    metadata_path: Path = PYPROJECT,
+) -> str:
+    wanted = version if version is not None else read_project_metadata(metadata_path)[1]
+    heading = f"## v{wanted}"
+    try:
+        lines = changelog_path.read_text(encoding="utf-8").splitlines()
+    except OSError as error:
+        raise ReleaseError(f"{changelog_path}:") from error
+    start = next((index for index, line in enumerate(lines) if line == heading), None)
+    if start is None:
+        raise ReleaseError(f"{heading} missing")
+    stop = start + 1
+    while stop < len(lines) and not lines[stop].startswith("## "):
+        stop += 1
+    return "\n".join(lines[start:stop]).rstrip() + "\n"
+
+
+def is_prerelease(*, metadata_path: Path = PYPROJECT) -> bool:
+    return read_project_metadata(metadata_path)[1].is_prerelease
+
+
 def _s(value: object, default: str = "") -> str:
     return default if value in (None, False) else f"{value}"
 
@@ -360,6 +388,10 @@ def dispatch(argv: Sequence[str] = sys.argv) -> str:
             return f"ok {smoke_install(_s(spec), expected=_s(expected) or None)}"
         case {"smoke-index": True, "<target>": target}:
             return f"ok {smoke_index(_s(target))} {_s(target)}"
+        case {"notes": True}:
+            return changelog_notes().rstrip("\n")
+        case {"is-prerelease": True}:
+            return "yes" if is_prerelease() else "no"
         case _:
             raise ReleaseError("unhandled")
 

@@ -1,27 +1,28 @@
 # deny root, then allow known tree
 /*
-!/LICENSE
-!/README.md
-!/AGENTS.md
-!/pyproject.toml
-!/uv.lock
-!/.python-version
-!/versions/
-!/versions/**
-!/run.sh
-!/Dockerfile
 !/.dockerignore
 !/.gitignore
 !/.pre-commit-config.yaml
+!/.python-version
+!/AGENTS.md
+!/CHANGELOG.md
+!/Dockerfile
+!/LICENSE
+!/README.md
+!/pyproject.toml
+!/run.sh
+!/uv.lock
+!/zensical.toml
 !/.github/
+!/docs/
+!/examples/
 !/scripts/
 !/src/
 !/tests/
-!/examples/
-!/zensical.toml
-!/docs/
+!/versions/
 
 # generated (documented; /* already drops these at root)
+coverage.json
 __pycache__/
 *.py[oc]
 *.egg-info

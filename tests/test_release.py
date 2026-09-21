@@ -15,6 +15,7 @@ from scripts.release import (
     SMOKE,
     ZERO_SHA,
     ReleaseError,
+    changelog_notes,
     check_commit,
     check_range,
     check_ref,
@@ -24,6 +25,7 @@ from scripts.release import (
     fetch_published_versions,
     git,
     is_error,
+    is_prerelease,
     main,
     parse_lock_version,
     parse_project_metadata,
@@ -343,6 +345,32 @@ def test_main_check_version_reports_existing_package(monkeypatch: pytest.MonkeyP
     stdout = io.StringIO()
     assert main(["check-version", "pypi"], stdout=stdout) == 0
     assert stdout.getvalue() == "ok 2.0 exists pypi\n"
+
+
+def test_changelog_notes_extracts_named_section(tmp_path: Path) -> None:
+    path = tmp_path / "CHANGELOG.md"
+    path.write_text("# Changelog\n\n## v2.0\n\n- new\n\n## v1.0\n\n- old\n")
+    assert changelog_notes(version=Version("2.0"), changelog_path=path) == "## v2.0\n\n- new\n"
+    assert changelog_notes(version=Version("1.0"), changelog_path=path) == "## v1.0\n\n- old\n"
+    _error("missing", changelog_notes, version=Version("3.0"), changelog_path=path)
+
+
+def test_is_prerelease_reads_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("scripts.release.read_project_metadata", lambda _: ("sample", Version("1.0rc1")))
+    assert is_prerelease() is True
+    monkeypatch.setattr("scripts.release.read_project_metadata", lambda _: ("sample", Version("1.0")))
+    assert is_prerelease() is False
+
+
+def test_main_notes_and_prerelease(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("scripts.release.changelog_notes", lambda: "## v1.0\n\n- x\n")
+    stdout = io.StringIO()
+    assert main(["notes"], stdout=stdout) == 0
+    assert stdout.getvalue() == "## v1.0\n\n- x\n"
+    monkeypatch.setattr("scripts.release.is_prerelease", lambda: True)
+    stdout = io.StringIO()
+    assert main(["is-prerelease"], stdout=stdout) == 0
+    assert stdout.getvalue() == "yes\n"
 
 
 def test_main_reports_release_error(monkeypatch: pytest.MonkeyPatch) -> None:

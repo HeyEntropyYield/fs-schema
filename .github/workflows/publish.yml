@@ -100,6 +100,7 @@ jobs:
     name: Create GitHub Release
     needs:
       - runner
+      - test
       - validate
       - verify
     if: inputs.target == 'pypi'
@@ -107,9 +108,16 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-uv
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: coverage-badge
+          path: .
       - name: Create the release for the existing tag
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" --verify-tag --generate-notes --prerelease
+        run: ./run.sh uv:venv:sync @@ gh:release
