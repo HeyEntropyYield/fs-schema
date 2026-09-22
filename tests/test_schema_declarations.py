@@ -6,7 +6,7 @@ import pytest
 from beartype.roar import BeartypeCallHintParamViolation
 
 import fs_schema
-from fs_schema import _fmt, _schema
+from fs_schema import MismatchErr, _fmt, _schema
 
 
 def test_declarations_are_frozen_slotted_values_with_contextual_defaults() -> None:
@@ -72,13 +72,51 @@ def test_exact_optional_sets_min_zero() -> None:
     assert compat == file
 
 
-def test_collection_skip_mismatch_is_stored_without_binding_change(tmp_path: Path) -> None:
-    declaration = _schema.File(match=r"part-[0-9]+[.]txt", skip_mismatch=True, min=0)
-    assert declaration.skip_mismatch is True
+def test_skip_mismatch_drops_failed_file_matches_and_bad_directories(tmp_path: Path) -> None:
     (tmp_path / "part-1.txt").write_text("a")
     (tmp_path / "junk.txt").write_text("b")
-    bound = _schema._bind_file_matches(declaration, list(tmp_path.iterdir()))
+    (tmp_path / "notes.md").write_text("c")
+    strict = _schema.File(match=r"part-[0-9]+[.]txt", min=0)
+    ignored = _schema._bind_file_matches(strict, list(tmp_path.iterdir()))
+    assert not isinstance(ignored, MismatchErr)
+    assert [match.path.name for match in ignored] == ["part-1.txt"]
+    skipped = _schema.File(match=r"part-[0-9]+[.]txt", min=0, skip_mismatch=True)
+    bound = _schema._bind_file_matches(skipped, list(tmp_path.iterdir()))
+    assert not isinstance(bound, MismatchErr)
     assert [match.path.name for match in bound] == ["part-1.txt"]
+
+    shaped = tmp_path / "shaped"
+    shaped.mkdir()
+    (shaped / "2.txt").write_text("no")
+    (shaped / "readme").write_text("ignore")
+    fmt_and_match = _schema.File(fmt="{n:d}.txt", match=r"1[.]txt", min=0)
+    assert isinstance(_schema._bind_file_matches(fmt_and_match, list(shaped.iterdir())), MismatchErr)
+    (shaped / "1.txt").write_text("yes")
+    kept = _schema._bind_file_matches(
+        _schema.File(fmt="{n:d}.txt", match=r"1[.]txt", min=0, skip_mismatch=True),
+        list(shaped.iterdir()),
+    )
+    assert not isinstance(kept, MismatchErr)
+    assert [match.path.name for match in kept] == ["1.txt"]
+
+    class Dated(_schema.Schema):
+        schema = {_schema.Dir(alias="days", fmt="{day:%Y%m%d}"): {"note": "note.json"}}
+
+    class DatedSkip(_schema.Schema):
+        schema = {_schema.Dir(alias="days", fmt="{day:%Y%m%d}", skip_mismatch=True): {"note": "note.json"}}
+
+    root = tmp_path / "dirs"
+    root.mkdir()
+    (root / "20260101").mkdir()
+    good = root / "20260102"
+    good.mkdir()
+    (good / "note.json").write_text("{}")
+    assert isinstance(Dated.bind(root), MismatchErr)
+    skipped_dirs = DatedSkip.bind(root)
+    assert type(skipped_dirs) is DatedSkip
+    hits = skipped_dirs.days
+    assert len(hits) == 1  # pyright: ignore[reportArgumentType]
+    assert hits[0].name == "20260102"  # pyright: ignore[reportIndexIssue, reportUnknownMemberType, reportAttributeAccessIssue]
 
 
 def test_exact_name_rejects_collection_only_flags() -> None:

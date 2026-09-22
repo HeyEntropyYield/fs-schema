@@ -93,8 +93,10 @@ def test_imported_from_install() -> None:
     assert "src" in parts or "site-packages" in parts
 
 
-def test_dt_wraps_unnamed_datetime_field() -> None:
-    assert fs_schema.dt("%Y-%m-%d") == "{:%Y-%m-%d}"
+def test_dt_names_the_capture_ts() -> None:
+    assert fs_schema.dt("%Y-%m-%d") == "{ts:%Y-%m-%d}"
+    assert fs_schema.dt("%Y-%m-%d", "day") == "{day:%Y-%m-%d}"
+    assert fs_schema.dt("%Y-%m-%d", "") == "{:%Y-%m-%d}"
 
 
 PACKAGE_HOOK_PROBE = """

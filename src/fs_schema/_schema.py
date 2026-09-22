@@ -104,6 +104,13 @@ class _Selector:
             return frozenset(self._match.groupindex)
         return frozenset()
 
+    def match_failure(self, basename: str) -> str | None:
+        if self._fmt is None or self._match is None or self._fmt.parse(basename) is None:
+            return None
+        if self._match.fullmatch(basename) is None:
+            return self._match.pattern
+        return None
+
 
 ## User schema file/dir declarations
 
@@ -363,7 +370,7 @@ class _Fixed:
     def exists(self) -> bool:
         return self.path.exists()
 
-    def __bool__(self) -> bool:
+    def __bool__(self) -> typing.Literal[True]:
         return True
 
 
@@ -765,10 +772,23 @@ def _sort_matches(matches: list[_MatchValue], node: Node) -> list[_MatchValue]:
     return matches
 
 
-def _bind_file_matches(defn: File[_L], listing: Sequence[Path]) -> list[_FileMatch[_L]]:
+def _failed_match(node: Node, basename: str) -> MismatchErr | None:
+    pattern = node._selector.match_failure(basename)  # pyright: ignore[reportPrivateUsage]
+    if pattern is None:
+        return None
+    return MismatchErr(f"failed match {pattern!r}: {basename}")
+
+
+def _bind_file_matches(defn: File[_L], listing: Sequence[Path]) -> list[_FileMatch[_L]] | MismatchErr:
     matches: list[_FileMatch[_L]] = []
     for target in listing:
-        if (captures := defn.select(target.name)) is None or not _is_kind(target, defn):
+        if not _is_kind(target, defn):
+            continue
+        if is_mismatch(failed := _failed_match(defn, target.name)):
+            if defn.skip_mismatch:
+                continue
+            return failed
+        if (captures := defn.select(target.name)) is None:
             continue
         matches.append(_FileMatch(target, captures, defn))
     return _sort_matches(matches, defn)
@@ -777,17 +797,28 @@ def _bind_file_matches(defn: File[_L], listing: Sequence[Path]) -> list[_FileMat
 def _bind_dir_matches(defn: DirDefn, listing: Sequence[Path], cache: FsCache) -> list[_DirMatch] | MismatchErr:
     matches: list[_DirMatch] = []
     match_type = _bound_dir_match_type(defn)
+    node = defn.defn
     for target in listing:
-        if (captures := defn.defn.select(target.name)) is None or not _is_kind(target, defn):
+        if not _is_kind(target, defn):
+            continue
+        if is_mismatch(failed := _failed_match(node, target.name)):
+            if node.skip_mismatch:
+                continue
+            return failed
+        if (captures := node.select(target.name)) is None:
             continue
         if is_mismatch(children := _bind_children(target, defn, cache)):
+            if node.skip_mismatch:
+                continue
             return children
         matches.append(match_type(target, captures, children, defn))
     return _sort_matches(matches, defn.defn)
 
 
 @overload
-def _bind_matches(defn: File[_L], listing: Sequence[Path], cache: FsCache) -> Sequence[_FileMatch[_L]]: ...
+def _bind_matches(
+    defn: File[_L], listing: Sequence[Path], cache: FsCache
+) -> Sequence[_FileMatch[_L]] | MismatchErr: ...
 
 
 @overload

@@ -73,10 +73,16 @@ def test_datetime_formats_round_trip_named_and_public_dt_fields() -> None:
 
     date_pattern: _fmt.FmtLike = _fmt.dt("%Y%m%d")
     date_only = _fmt.CompiledFormat(date_pattern)
-    assert date_only.format(moment) == "20260914"
+    assert date_only.format(ts=moment) == "20260914"
     parsed_date = date_only.parse("20260914")
     assert parsed_date is not None
-    assert parsed_date.args == (datetime(2026, 9, 14),)
+    assert parsed_date.kwargs == {"ts": datetime(2026, 9, 14)}
+
+    positional = _fmt.CompiledFormat(_fmt.dt("%Y%m%d", ""))
+    assert positional.format(moment) == "20260914"
+    parsed_positional = positional.parse("20260914")
+    assert parsed_positional is not None
+    assert parsed_positional.args == (datetime(2026, 9, 14),)
 
 
 def test_parser_requires_a_complete_case_sensitive_basename() -> None:

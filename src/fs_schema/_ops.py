@@ -1,6 +1,6 @@
 from pathlib import Path
 from shutil import copyfile
-from typing import TypeVar, cast
+from typing import Literal, TypeVar, cast
 
 from typing_extensions import TypeIs, assert_never
 
@@ -12,7 +12,7 @@ _T = TypeVar("_T")
 
 
 class MismatchErr(Exception):
-    def __bool__(self) -> bool:
+    def __bool__(self) -> Literal[False]:
         return False
 
 

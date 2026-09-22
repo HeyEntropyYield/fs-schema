@@ -66,7 +66,7 @@ def check() -> None:
     assert_type(directories[0], _schema._DirMatch)
     assert_type(directory[0], _schema.Child)
     assert_type(iter(directory), Iterator[_schema.Child])
-    assert_type(_schema._bind_matches(text_defn, listing, {}), Sequence[_schema._FileMatch[str]])
+    assert_type(_schema._bind_matches(text_defn, listing, {}), Sequence[_schema._FileMatch[str]] | fss.MismatchErr)
     assert_type(_schema._bind_matches(dir_defn, listing, {}), Sequence[_schema._DirMatch] | fss.MismatchErr)
     assert_type(_schema._bind_fixed(Path("text"), text_defn, {}), _schema.FixedFile[str])
     assert_type(_schema.plan_fixed(Path("text"), text_defn), _schema.FixedFile[str])

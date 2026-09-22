@@ -83,7 +83,7 @@ Inline `{...}` → private Schema with stable identity.
 | `min` / `max` | Collection count. Default min 1, max unbounded. |
 | `alias` | Python child name. |
 | `sort` / `sort_rev` | Collection order. |
-| `skip_mismatch` | Collection; unused until later. |
+| `skip_mismatch` | Collection: drop a fmt hit that fails `match`, or a directory whose children mismatch. |
 | `schema` | File loader, or extra Dir contract. |
 
 `name` + `match` validates that basename.
@@ -100,8 +100,8 @@ part_decl = fss.File(
 day_decl = fss.Dir(alias="days", fmt=fss.dt("%Y-%m-%d"), min=0)
 ```
 
-`fss.dt("%Y-%m-%d")` → `"{:%Y-%m-%d}"`. Capture is `args[0]`.
-`{day:%Y-%m-%d}` → `kwargs["day"]`.
+`fss.dt("%Y-%m-%d")` → `"{ts:%Y-%m-%d}"`. Capture is `kwargs["ts"]`.
+`fss.dt("%Y-%m-%d", "day")` names that capture. `fss.dt("%Y-%m-%d", "")` stays positional.
 
 ### Inheritance and replacement
 

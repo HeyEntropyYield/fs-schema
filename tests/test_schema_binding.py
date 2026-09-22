@@ -163,7 +163,7 @@ def test_sorting_and_nested_selected_directory_mismatch_propagates(tmp_path: Pat
     assert isinstance(sorted_only, FixedDir)
     dates, items = sorted_only
     assert isinstance(dates, Template) and isinstance(items, Template)
-    assert [match.args[0] for match in dates] == [datetime(2024, 1, 1), datetime(2025, 1, 2)]
+    assert [match.kwargs["ts"] for match in dates] == [datetime(2024, 1, 1), datetime(2025, 1, 2)]
     assert [match.path.name for match in items] == ["item-1.txt", "item-2.txt"]
 
 

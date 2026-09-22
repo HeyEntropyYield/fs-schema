@@ -2,6 +2,17 @@
 
 API by git tag. Signatures: [reference](https://heyentropyyield.github.io/fs-schema/reference/).
 
+## v0.5.0
+
+Exact names and collections are different constructors. `MismatchErr` is falsy. Bound nodes are truthy.
+
+- **Declare** — exact `File`/`Dir` take a positional `name`. Collections are keyword-only `fmt` and/or `match`. `optional=True` on an exact name is `min=0`. `sort`, `sort_rev`, and `skip_mismatch` raise `ValueError` on an exact name. `dt(pattern)` captures `ts`. `skip_mismatch` drops a fmt hit that fails `match`, or a directory member whose children mismatch.
+  `File`, `Dir`, `dt`
+  [Defining schemas](https://heyentropyyield.github.io/fs-schema/reference/#defining-schemas)
+- **Bind** — `MismatchErr` is falsy. A nested `Schema` binds as that schema.
+  `MismatchErr`, `Schema`, `Schema.bind`
+  [Applying schemas](https://heyentropyyield.github.io/fs-schema/reference/#applying-schemas)
+
 ## v0.4.6
 
 First public. Alpha. `import fs_schema as fss`. Python 3.10–3.14.

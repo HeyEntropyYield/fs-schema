@@ -158,5 +158,5 @@ def _compile_field(name: str, spec: str, index: int) -> FormatField:
     return replace(_field_template(spec).value, name=name, index=index, pattern=spec)
 
 
-def dt(pattern: str) -> FmtLike:
-    return f"{{:{pattern}}}"
+def dt(pattern: str, name: str = "ts") -> FmtLike:
+    return f"{{{name}:{pattern}}}"
