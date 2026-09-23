@@ -112,6 +112,7 @@ modules = (
     "fs_schema._mashumaro_json",
     "fs_schema._ops",
     "fs_schema._schema",
+    "fs_schema._selector",
     "fs_schema._types",
 )
 assert not any(module in sys.modules for module in modules)

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing_extensions import assert_type
 
 import fs_schema as fss
-from fs_schema import _fmt, _ops, _schema
+from fs_schema import _compile, _fmt, _ops, _schema
 from fs_schema._std_ext import CacheSeq
 
 
@@ -31,7 +31,7 @@ def check() -> None:
     listing: CacheSeq[Path] = CacheSeq(lambda: [Path("part-1")])
     text_defn: _schema.File[str] = _schema.File(name="text", schema=lambda path: path.name)
     text_template = _schema.Template(Path("root"), (), text_defn)
-    aliased_text = _schema._aliased_file("text_alias", text_defn)
+    aliased_text = _compile.aliased_file("text_alias", text_defn)
 
     accepts_located(fixed)
     accepts_match(match)
@@ -102,7 +102,7 @@ def check() -> None:
     assert_type(Repeated.runs, type)
 
     def narrow_schema_type(candidate: object) -> None:
-        if _schema._is_schema_type(candidate):
+        if _compile.is_schema_type(candidate):
             assert_type(candidate, type[_schema.Schema])
 
     narrow_schema_type(Concrete)
