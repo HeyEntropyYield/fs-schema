@@ -7,7 +7,7 @@ from typing import ClassVar
 import pytest
 
 from fs_schema import FILES, Dir, File, Schema
-from fs_schema._schema import _DirDefn, _FixedFile, _Matches, _Template
+from fs_schema._schema import DirDefn, FixedFile, Matches, Template
 
 
 def _define(layout: object) -> type[Schema]:
@@ -27,18 +27,18 @@ def test_reifies_each_raw_grammar_branch_and_stable_class_navigation() -> None:
         }
 
     root = LayoutSchema._schema_defn
-    assert [type(defn) for defn in root.defns] == [File, File, _DirDefn, _DirDefn, File]
-    assert LayoutSchema.loose_txt is _FixedFile
-    assert LayoutSchema.parts is _Template
+    assert [type(defn) for defn in root.defns] == [File, File, DirDefn, DirDefn, File]
+    assert LayoutSchema.loose_txt is FixedFile
+    assert LayoutSchema.parts is Template
     assert LayoutSchema.explicit is Explicit
-    assert LayoutSchema.explicit.leaf is _FixedFile
-    assert LayoutSchema.runs is _Template
+    assert LayoutSchema.explicit.leaf is FixedFile
+    assert LayoutSchema.runs is Template
     runs = root.defns[3]
-    assert isinstance(runs, _DirDefn)
+    assert isinstance(runs, DirDefn)
     assert runs.child_type is not None
     assert runs.child_type.deep is runs.child_type.deep
-    assert runs.child_type.deep.leaf is _FixedFile
-    assert LayoutSchema.named is _FixedFile
+    assert runs.child_type.deep.leaf is FixedFile
+    assert LayoutSchema.named is FixedFile
     assert not hasattr(LayoutSchema, "unknown")
     assert not hasattr(LayoutSchema, "loose.txt")
     assert not hasattr(LayoutSchema, "__parameters__")
@@ -117,7 +117,7 @@ def test_single_inheritance_replaces_by_identity_without_local_metadata() -> Non
     class InheritedOnly(Derived):
         pass
 
-    nodes = [defn.defn if isinstance(defn, _DirDefn) else defn for defn in Derived._schema_defn.defns]
+    nodes = [defn.defn if isinstance(defn, DirDefn) else defn for defn in Derived._schema_defn.defns]
     assert [node.alias or node.name or node.fmt or None for node in nodes] == [
         "value",
         "other",
@@ -126,7 +126,7 @@ def test_single_inheritance_replaces_by_identity_without_local_metadata() -> Non
         None,
         None,
     ]
-    assert isinstance(Derived._schema_defn.defns[0], _DirDefn)
+    assert isinstance(Derived._schema_defn.defns[0], DirDefn)
     assert isinstance(Derived._schema_defn.defns[3], File)
     assert Derived._schema_defn.defns[2].match == r"named[.]txt"  # pyright: ignore[reportAttributeAccessIssue]
     assert Derived._schema_defn.defns[3].min == 0
@@ -158,8 +158,8 @@ def test_mapping_alias_identity_overrides_names_and_kinds() -> None:
         "other.txt",
     ]
     assert Renamed._schema_defn.defns[0].alias == "value"  # pyright: ignore[reportAttributeAccessIssue]
-    assert isinstance(CrossKind._schema_defn.defns[0], _DirDefn)
-    assert CrossKind.value is not _FixedFile
+    assert isinstance(CrossKind._schema_defn.defns[0], DirDefn)
+    assert CrossKind.value is not FixedFile
 
 
 def test_empty_alias_and_match_only_declarations_are_anonymous() -> None:
@@ -257,7 +257,7 @@ def test_repeated_class_navigation_is_not_a_reusable_schema_declaration() -> Non
     class Parent(Schema):
         schema = {Dir(fmt="item-{n:d}", alias="items"): {}}
 
-    assert Parent.items is _Template
+    assert Parent.items is Template
     with pytest.raises(TypeError, match=r"Invalid[.]schema invalid entry at key 'reused'"):
         _define({"reused": Parent.items})
 
@@ -403,5 +403,5 @@ def test_coincident_identities_on_one_child_are_valid() -> None:
     class Coincident(Schema):
         schema = {FILES: [File("same", alias="same"), File(match="part-.+", alias="parts")]}
 
-    assert Coincident.same is _FixedFile
-    assert Coincident.parts is _Matches
+    assert Coincident.same is FixedFile
+    assert Coincident.parts is Matches

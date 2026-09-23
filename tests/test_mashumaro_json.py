@@ -102,7 +102,7 @@ def test_raw_path_and_save_writes_take_precedence(tmp_path: Path) -> None:
             saved_to.append(path)
             path.write_text(f"saved {self.value}")
 
-    file = _schema._FixedFile(tmp_path / "nested" / "value.json", fss.File("value.json", schema=Manifest))
+    file = _schema.FixedFile(tmp_path / "nested" / "value.json", fss.File("value.json", schema=Manifest))
     file.put(b"bytes")
     assert file.read_bytes() == b"bytes"
     file.put("text")
@@ -127,7 +127,7 @@ def test_json_validation_errors_leave_created_parent(tmp_path: Path) -> None:
     assert target.parent.is_dir()
     assert not target.exists()
 
-    wrong_model = _schema._FixedFile(tmp_path / "model.json", fss.File("model.json", schema=int))
+    wrong_model = _schema.FixedFile(tmp_path / "model.json", fss.File("model.json", schema=int))
     wrong_model.put(Manifest("value"))
     error = wrong_model.load()
     assert isinstance(error, TypeError)
@@ -136,6 +136,6 @@ def test_json_validation_errors_leave_created_parent(tmp_path: Path) -> None:
 
 def test_declared_model_keeps_generic_load_type() -> None:
     declaration = fss.File("manifest.json", schema=Manifest)
-    fixed = _schema._FixedFile(Path("manifest.json"), declaration)
+    fixed = _schema.FixedFile(Path("manifest.json"), declaration)
     assert_type(declaration, fss.File[Manifest])
     assert_type(fixed.load(), Manifest | Exception)

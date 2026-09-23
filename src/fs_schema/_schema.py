@@ -181,16 +181,16 @@ LayoutEntry: TypeAlias = "tuple[Dir[Schema] | str, DirRhs] | tuple[FilesKey, Fil
 
 
 @dataclass(frozen=True, slots=True, init=False)
-class _DirDefn:
+class DirDefn:
     defn: Dir["Schema"]
-    defns: tuple["_Defn", ...]
+    defns: tuple["Defn", ...]
     lookup: Mapping[str, int]
     child_type: "type[Schema] | None"
 
     def __init__(
         self,
         defn: Dir["Schema"],
-        defns: "Sequence[File[object] | _DirDefn]" = (),
+        defns: "Sequence[File[object] | DirDefn]" = (),
         child_type: "type[Schema] | None" = None,
     ) -> None:
         child_defns = tuple(defns)
@@ -203,7 +203,7 @@ class _DirDefn:
             target[key] = index
 
         for index, child_defn in enumerate(child_defns):
-            node = _node(child_defn)
+            node = defn_node(child_defn)
             for identity in dict.fromkeys(
                 key
                 for key in (node.alias, node.name, _normalize_name(node.name) if node.name else None, node.fmt)
@@ -221,8 +221,8 @@ class _DirDefn:
         object.__setattr__(self, "child_type", child_type)
 
 
-_Defn: TypeAlias = File[object] | _DirDefn
-_Defn_co = TypeVar("_Defn_co", bound=_Defn, covariant=True, default=_Defn)
+Defn: TypeAlias = File[object] | DirDefn
+_Defn_co = TypeVar("_Defn_co", bound=Defn, covariant=True, default=Defn)
 
 
 ## Runtime values
@@ -271,7 +271,7 @@ def _load_model(path: Path, schema: type[_L_co]) -> _L_co | Exception:
     return load(path, schema)
 
 
-class _FixedFile(_Fixed, Generic[_L_co]):
+class FixedFile(_Fixed, Generic[_L_co]):
     defn: File[_L_co]
 
     def __init__(self, path: PathIsh, defn: File[_L_co]) -> None:
@@ -339,13 +339,13 @@ class _CaptureState:
         return self._captures.kwargs
 
 
-class _FileMatch(_CaptureState, _FixedFile[_L_co], Generic[_L_co]):
+class _FileMatch(_CaptureState, FixedFile[_L_co], Generic[_L_co]):
     def __init__(self, path: PathIsh, captures: ParsedCaptures, defn: File[_L_co]) -> None:
-        _FixedFile.__init__(self, path, defn)
+        FixedFile.__init__(self, path, defn)
         self._captures: ParsedCaptures = captures
 
 
-class _Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
+class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
     path: Path
     _matches: tuple[_M_co, ...]
     defn: _Defn_co
@@ -382,7 +382,7 @@ class _Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
         return next((match for match in self._matches if predicate(match.args, match.kwargs)), None)
 
     def where(self, *args: CaptureField, **kwargs: CaptureField) -> Self:
-        _validate_capture_names(self.defn, kwargs)
+        validate_capture_names(self.defn, kwargs)
         return self.filter(
             lambda captured_args, captured_kwargs: _capture_values_match(captured_args, captured_kwargs, args, kwargs)
         )
@@ -405,41 +405,41 @@ class _Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
             return typing.cast(_Default, default)
 
 
-class _Template(_Matches[_M_co, _Defn_co], Generic[_M_co, _Defn_co]):
+class Template(Matches[_M_co, _Defn_co], Generic[_M_co, _Defn_co]):
     @overload
-    def format(self: "_Template[_FileMatch[_L], File[_L]]", *args: FmtField, **kwargs: FmtField) -> _FixedFile[_L]: ...
+    def format(self: "Template[_FileMatch[_L], File[_L]]", *args: FmtField, **kwargs: FmtField) -> FixedFile[_L]: ...
 
     @overload
-    def format(self: "_Template[_DirMatch, _DirDefn]", *args: FmtField, **kwargs: FmtField) -> "_FixedDir": ...
+    def format(self: "Template[_DirMatch, DirDefn]", *args: FmtField, **kwargs: FmtField) -> "FixedDir": ...
 
-    def format(self, *args: FmtField, **kwargs: FmtField) -> "_FixedFile[object] | _FixedDir":
-        node = _node(self.defn)
+    def format(self, *args: FmtField, **kwargs: FmtField) -> "FixedFile[object] | FixedDir":
+        node = defn_node(self.defn)
         basename = _format_node(node, *args, **kwargs)
-        if not _is_safe_basename(basename):
+        if not is_safe_basename(basename):
             raise ValueError(f"formatted name must be a basename: {basename!r}")
-        return _plan_fixed(self.path / basename, self.defn)
+        return plan_fixed(self.path / basename, self.defn)
 
 
 if TYPE_CHECKING:
-    Child: TypeAlias = "_FixedFile[object] | _FixedDir | _Matches[_FileMatch[object] | _DirMatch]"
+    Child: TypeAlias = "FixedFile[object] | FixedDir | Matches[_FileMatch[object] | _DirMatch]"
 else:
     Child: TypeAlias = typing.Union[  # noqa: UP007
-        _FixedFile[object],
-        ForwardRef("fs_schema._schema._FixedDir"),
-        _Matches[typing.Union[_FileMatch[object], ForwardRef("fs_schema._schema._DirMatch")]],  # noqa: UP007
+        FixedFile[object],
+        ForwardRef("fs_schema._schema.FixedDir"),
+        Matches[typing.Union[_FileMatch[object], ForwardRef("fs_schema._schema._DirMatch")]],  # noqa: UP007
     ]
 
 
-class _FixedDir(_Fixed):
+class FixedDir(_Fixed):
     _children: tuple[Child, ...]
     _lookup: Mapping[str, int]
-    defn: _DirDefn
+    defn: DirDefn
 
     def __init__(
         self,
         path: PathIsh,
         children: Sequence[Child],
-        defn: _DirDefn,
+        defn: DirDefn,
     ) -> None:
         _Fixed.__init__(self, path)
         self._children = tuple(children)
@@ -468,44 +468,44 @@ class _FixedDir(_Fixed):
             child = self._children[self._lookup[name]]
         except KeyError:
             raise AttributeError(name) from None
-        node = _node(child.defn)
+        node = defn_node(child.defn)
         if name != node.alias and name != _normalize_name(node.name):
             raise AttributeError(name)
         return child
 
 
-class _DirMatch(_CaptureState, _FixedDir):
-    def __init__(self, path: PathIsh, captures: ParsedCaptures, children: Sequence[Child], defn: _DirDefn) -> None:
-        _FixedDir.__init__(self, path, children, defn)
+class _DirMatch(_CaptureState, FixedDir):
+    def __init__(self, path: PathIsh, captures: ParsedCaptures, children: Sequence[Child], defn: DirDefn) -> None:
+        FixedDir.__init__(self, path, children, defn)
         self._captures: ParsedCaptures = captures
 
 
-def _plan_children(path: Path, dir_defn: _DirDefn) -> tuple[Child, ...]:
+def _plan_children(path: Path, dir_defn: DirDefn) -> tuple[Child, ...]:
     return tuple(_plan_dir_defn(path, defn) for defn in dir_defn.defns)
 
 
-def _plan_dir_defn(path: Path, defn: _Defn) -> Child:
-    node = _node(defn)
+def _plan_dir_defn(path: Path, defn: Defn) -> Child:
+    node = defn_node(defn)
     if node.name:
-        return _plan_fixed(path / node.name, defn)
-    return _Template(path, (), defn) if node.fmt is not None else _Matches(path, (), defn)
+        return plan_fixed(path / node.name, defn)
+    return Template(path, (), defn) if node.fmt is not None else Matches(path, (), defn)
 
 
 @overload
-def _plan_fixed(path: Path, defn: File[_L]) -> _FixedFile[_L]: ...
+def plan_fixed(path: Path, defn: File[_L]) -> FixedFile[_L]: ...
 
 
 @overload
-def _plan_fixed(path: Path, defn: _DirDefn) -> _FixedDir: ...
+def plan_fixed(path: Path, defn: DirDefn) -> FixedDir: ...
 
 
-def _plan_fixed(path: Path, defn: _Defn) -> _FixedFile[object] | _FixedDir:
+def plan_fixed(path: Path, defn: Defn) -> FixedFile[object] | FixedDir:
     if isinstance(defn, File):
-        return _FixedFile(path, defn)
-    return _FixedDir(path, _plan_children(path, defn), defn)
+        return FixedFile(path, defn)
+    return FixedDir(path, _plan_children(path, defn), defn)
 
 
-def _node(defn: _Defn) -> Node:
+def defn_node(defn: Defn) -> Node:
     return defn if isinstance(defn, File) else defn.defn
 
 
@@ -513,18 +513,18 @@ def _format_node(node: Node, *args: FmtField, **kwargs: FmtField) -> str:
     return node._selector.format(*args, **kwargs)  # pyright: ignore[reportPrivateUsage]
 
 
-def _capture_names(defn: _Defn) -> frozenset[str]:
-    return _node(defn)._selector.capture_names()  # pyright: ignore[reportPrivateUsage]
+def capture_names(defn: Defn) -> frozenset[str]:
+    return defn_node(defn)._selector.capture_names()  # pyright: ignore[reportPrivateUsage]
 
 
-def _validate_capture_names(defn: _Defn, kwargs: Mapping[str, CaptureField]) -> None:
-    capture_names = _capture_names(defn)
+def validate_capture_names(defn: Defn, kwargs: Mapping[str, CaptureField]) -> None:
+    names = capture_names(defn)
     for name in kwargs:
-        if name not in capture_names:
+        if name not in names:
             raise KeyError(name)
 
 
-def _is_safe_basename(name: str) -> bool:
+def is_safe_basename(name: str) -> bool:
     return bool(name) and name not in {".", ".."} and "\0" not in name and "/" not in name and "\\" not in name
 
 
@@ -547,11 +547,11 @@ FsCache: TypeAlias = dict[Path, CacheSeq[Path]]
 _MatchValue = TypeVar("_MatchValue", bound=Match)
 
 
-def _is_kind(path: Path, defn: _Defn) -> bool:
+def _is_kind(path: Path, defn: Defn) -> bool:
     return path.is_file() if isinstance(defn, File) else path.is_dir()
 
 
-def _bind_children(path: Path, dir_defn: _DirDefn, cache: FsCache) -> tuple[Child, ...] | MismatchErr:
+def _bind_children(path: Path, dir_defn: DirDefn, cache: FsCache) -> tuple[Child, ...] | MismatchErr:
     if not path.is_dir():
         return MismatchErr(f"expected directory: {path}")
 
@@ -570,8 +570,8 @@ def _listing(path: Path, cache: FsCache) -> CacheSeq[Path]:
     return listing
 
 
-def _bind_dir_defn(path: Path, position: int, defn: _Defn, cache: FsCache) -> Child | MismatchErr:
-    node = _node(defn)
+def _bind_dir_defn(path: Path, position: int, defn: Defn, cache: FsCache) -> Child | MismatchErr:
+    node = defn_node(defn)
     if node.name:
         target = path / node.name
         if node.select(target.name) is None:
@@ -587,23 +587,23 @@ def _bind_dir_defn(path: Path, position: int, defn: _Defn, cache: FsCache) -> Ch
     if count < node.min or (node.max is not None and count > node.max):
         upper = "unbounded" if node.max is None else str(node.max)
         return MismatchErr(f"expected {node.min}..{upper} matches for defn {position}, found {count}: {path}")
-    return _Template(path, matches, defn) if node.fmt is not None else _Matches(path, matches, defn)
+    return Template(path, matches, defn) if node.fmt is not None else Matches(path, matches, defn)
 
 
 @overload
-def _bind_fixed(path: Path, defn: File[_L], cache: FsCache) -> _FixedFile[_L]: ...
+def _bind_fixed(path: Path, defn: File[_L], cache: FsCache) -> FixedFile[_L]: ...
 
 
 @overload
-def _bind_fixed(path: Path, defn: _DirDefn, cache: FsCache) -> _FixedDir | MismatchErr: ...
+def _bind_fixed(path: Path, defn: DirDefn, cache: FsCache) -> FixedDir | MismatchErr: ...
 
 
-def _bind_fixed(path: Path, defn: _Defn, cache: FsCache) -> _FixedFile[object] | _FixedDir | MismatchErr:
+def _bind_fixed(path: Path, defn: Defn, cache: FsCache) -> FixedFile[object] | FixedDir | MismatchErr:
     if isinstance(defn, File):
-        return _FixedFile(path, defn)
+        return FixedFile(path, defn)
     if is_mismatch(children := _bind_children(path, defn, cache)):
         return children
-    return (defn.child_type or _FixedDir)(path, children, defn)
+    return (defn.child_type or FixedDir)(path, children, defn)
 
 
 def _sort_matches(matches: list[_MatchValue], node: Node) -> list[_MatchValue]:
@@ -629,7 +629,7 @@ def _bind_file_matches(defn: File[_L], listing: Sequence[Path]) -> list[_FileMat
     return _sort_matches(matches, defn)
 
 
-def _bind_dir_matches(defn: _DirDefn, listing: Sequence[Path], cache: FsCache) -> list[_DirMatch] | MismatchErr:
+def _bind_dir_matches(defn: DirDefn, listing: Sequence[Path], cache: FsCache) -> list[_DirMatch] | MismatchErr:
     matches: list[_DirMatch] = []
     for target in listing:
         if (captures := defn.defn.select(target.name)) is None or not _is_kind(target, defn):
@@ -645,23 +645,23 @@ def _bind_matches(defn: File[_L], listing: Sequence[Path], cache: FsCache) -> Se
 
 
 @overload
-def _bind_matches(defn: _DirDefn, listing: Sequence[Path], cache: FsCache) -> Sequence[_DirMatch] | MismatchErr: ...
+def _bind_matches(defn: DirDefn, listing: Sequence[Path], cache: FsCache) -> Sequence[_DirMatch] | MismatchErr: ...
 
 
 def _bind_matches(
-    defn: _Defn, listing: Sequence[Path], cache: FsCache
+    defn: Defn, listing: Sequence[Path], cache: FsCache
 ) -> Sequence[_FileMatch[object] | _DirMatch] | MismatchErr:
     if isinstance(defn, File):
         return _bind_file_matches(defn, listing)
     return _bind_dir_matches(defn, listing, cache)
 
 
-def bind_defns(root: PathIsh, defns: Sequence[_Defn]) -> _FixedDir | MismatchErr:
+def bind_defns(root: PathIsh, defns: Sequence[Defn]) -> FixedDir | MismatchErr:
     path = Path(root)
-    dir_defn = _DirDefn(Dir(name="."), defns)
+    dir_defn = DirDefn(Dir(name="."), defns)
     if is_mismatch(children := _bind_children(path, dir_defn, {})):
         return children
-    return _FixedDir(path, children, dir_defn)
+    return FixedDir(path, children, dir_defn)
 
 
 ## Schemas
@@ -671,9 +671,9 @@ def _is_schema_type(value: object) -> TypeIs["type[Schema]"]:
     return isinstance(value, SchemaCls) and issubclass(value, Schema)
 
 
-def _schema_defn_for(schema_type: "type[Schema]") -> _DirDefn:
+def _schema_defn_for(schema_type: "type[Schema]") -> DirDefn:
     value = vars(schema_type).get("_schema_defn")
-    if not isinstance(value, _DirDefn):
+    if not isinstance(value, DirDefn):
         raise AssertionError(f"{schema_type.__name__} has no compiled schema definition")
     return value
 
@@ -683,7 +683,7 @@ def _invalid_schema(class_name: str, detail: str) -> TypeError:
 
 
 def _validate_schema_node(class_name: str, key: object, node: Node) -> None:
-    if node.name and not _is_safe_basename(node.name):
+    if node.name and not is_safe_basename(node.name):
         raise _invalid_schema(class_name, f"declaration {key!r} name must be a basename")
     if node.alias and (not node.alias.isidentifier() or keyword.iskeyword(node.alias) or node.alias.startswith("_")):
         raise _invalid_schema(class_name, f"declaration {key!r} alias must be a public identifier")
@@ -695,12 +695,12 @@ def _aliased_file(alias: str, source: File[_L]) -> File[_L]:
     return source if source.alias == alias else replace(source, alias=alias)
 
 
-def _identity(defn: _Defn) -> str | None:
-    node = _node(defn)
+def _identity(defn: Defn) -> str | None:
+    node = defn_node(defn)
     return node.alias or node.name or node.fmt or None
 
 
-def _merge_defns(base: Sequence[_Defn], local: Sequence[_Defn]) -> tuple[_Defn, ...]:
+def _merge_defns(base: Sequence[Defn], local: Sequence[Defn]) -> tuple[Defn, ...]:
     merged = list(base)
     positions = {identity: index for index, defn in enumerate(base) if (identity := _identity(defn)) is not None}
     for defn in local:
@@ -714,7 +714,7 @@ def _merge_defns(base: Sequence[_Defn], local: Sequence[_Defn]) -> tuple[_Defn, 
     return tuple(merged)
 
 
-def _children_satisfy(actual: Sequence[_Defn], required: Sequence[_Defn]) -> bool:
+def _children_satisfy(actual: Sequence[Defn], required: Sequence[Defn]) -> bool:
     matched_anonymous: set[int] = set()
     for required_child in required:
         identity = _identity(required_child)
@@ -737,13 +737,11 @@ def _children_satisfy(actual: Sequence[_Defn], required: Sequence[_Defn]) -> boo
     return True
 
 
-def _defn_satisfies(actual: _Defn, required: _Defn) -> bool:
+def _defn_satisfies(actual: Defn, required: Defn) -> bool:
     if isinstance(required, File):
         return isinstance(actual, File) and actual == required
     return (
-        isinstance(actual, _DirDefn)
-        and actual.defn == required.defn
-        and _children_satisfy(actual.defns, required.defns)
+        isinstance(actual, DirDefn) and actual.defn == required.defn and _children_satisfy(actual.defns, required.defns)
     )
 
 
@@ -758,9 +756,9 @@ def _make_inline_schema(class_name: str, module: str, position: int, layout: dic
     return generated
 
 
-def _directory_defn(class_name: str, key: object, node: "Dir[Schema]", child_type: "type[Schema]") -> _DirDefn:
+def _directory_defn(class_name: str, key: object, node: "Dir[Schema]", child_type: "type[Schema]") -> DirDefn:
     child_root = _schema_defn_for(child_type)
-    compiled = _DirDefn(node, child_root.defns, child_type)
+    compiled = DirDefn(node, child_root.defns, child_type)
     if node.schema is not None:
         contract = _schema_defn_for(node.schema)
         if not _children_satisfy(compiled.defns, contract.defns):
@@ -784,12 +782,12 @@ def _raw_schema(cls: "type[Schema]") -> object:
     return cls.schema if "schema" in cls.__dict__ else {}
 
 
-def _compile_local_defns(cls: "type[Schema]") -> tuple[_Defn, ...]:
+def _compile_local_defns(cls: "type[Schema]") -> tuple[Defn, ...]:
     raw = _raw_schema(cls)
     if not _is_raw_mapping(raw):
         raise _invalid_schema(cls.__name__, "must be a dict")
     entries = raw
-    defns: list[_Defn] = []
+    defns: list[Defn] = []
     for key, value in entries.items():
         match key, value:
             case FilesKey() as token, _ if token is FILES and _is_raw_list(value):
@@ -868,16 +866,16 @@ def _compile_schema(cls: "type[Schema]") -> None:
         raise AssertionError("validated Schema class lost its Schema base")
     local_defns = _compile_local_defns(cls)
     try:
-        _ = _DirDefn(Dir(name="."), local_defns)
+        _ = DirDefn(Dir(name="."), local_defns)
         defns = _merge_defns(_schema_defn_for(base).defns, local_defns)
-        type.__setattr__(cls, "_schema_defn", _DirDefn(Dir(name="."), defns))
+        type.__setattr__(cls, "_schema_defn", DirDefn(Dir(name="."), defns))
     except ValueError as error:
         raise _invalid_schema(cls.__name__, str(error)) from error
 
 
 def _validate_child_shadows(cls: "type[Schema]") -> None:
     for defn in _schema_defn_for(cls).defns:
-        node = _node(defn)
+        node = defn_node(defn)
         for name in (node.alias or None, _normalize_name(node.name) if node.name else None):
             if name is not None and (
                 name in _CAPTURE_MEMBERS
@@ -905,13 +903,13 @@ class SchemaCls(type):
             defn = root_defn.defns[root_defn.lookup[name]]
         except (AssertionError, KeyError):
             raise AttributeError(name) from None
-        node = _node(defn)
+        node = defn_node(defn)
         if name != node.alias and name != _normalize_name(node.name):
             raise AttributeError(name)
         if node.name:
-            child_type: type[object] = _FixedFile if isinstance(defn, File) else defn.child_type or _FixedDir
+            child_type: type[object] = FixedFile if isinstance(defn, File) else defn.child_type or FixedDir
         else:
-            child_type = _Template if node.fmt is not None else _Matches
+            child_type = Template if node.fmt is not None else Matches
         return child_type
 
     @property
@@ -921,7 +919,7 @@ class SchemaCls(type):
         return _root_type_for(cls)
 
 
-class SchemaRoot(_FixedDir, Generic[_S]):
+class SchemaRoot(FixedDir, Generic[_S]):
     _schema_type: type[_S]
 
     def bind(self) -> "_S | MismatchErr":
@@ -955,9 +953,9 @@ def _root_type_for(schema_type: type[_S]) -> type[SchemaRoot[_S]]:
     return generated
 
 
-class Schema(_FixedDir, metaclass=SchemaCls):
+class Schema(FixedDir, metaclass=SchemaCls):
     schema: ClassVar["Layout"] = {}
-    _schema_defn: ClassVar[_DirDefn] = _DirDefn(Dir(name="."))
+    _schema_defn: ClassVar[DirDefn] = DirDefn(Dir(name="."))
 
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()

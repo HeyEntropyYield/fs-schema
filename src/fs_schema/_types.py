@@ -9,20 +9,13 @@ from typing_extensions import Protocol, runtime_checkable
 # The invariant load value links LoadSpec callables to low-level load results.
 LoadT = TypeVar("LoadT")
 
-# Two classes of alias here, and mixing them up silently disables beartype.
-# Anything reachable from a runtime-checked signature is built from real
-# objects, which is what drives the defn order in this file. Aliases
-# that are recursive cannot be, and are static-only.
 PathIsh: TypeAlias = str | os.PathLike[str]
 
-# Static-only. beartype cannot resolve a forward reference that names an alias
-# rather than a class, so never annotate a checked signature with these.
 Json: TypeAlias = dict[str, "Json"] | list["Json"] | str | int | float | bool | None
 JsonRo: TypeAlias = Mapping[str, "JsonRo"] | Sequence["JsonRo"] | str | int | float | bool | None
 JsonObj: TypeAlias = dict[str, Json]
 
 
-# beartype checks Protocol params via isinstance. Bare Protocol is static-only.
 @runtime_checkable
 class HasSave(Protocol):
     def save(self, path: Path) -> None: ...

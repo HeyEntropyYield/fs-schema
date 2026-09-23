@@ -8,7 +8,7 @@ from beartype import beartype
 from beartype.roar import BeartypeCallHintParamViolation
 
 from fs_schema import FILES, Dir, File, Layout, Match, MismatchErr, Schema, SchemaRoot
-from fs_schema._schema import _FixedDir, _FixedFile, _Matches, _Template
+from fs_schema._schema import FixedDir, FixedFile, Matches, Template
 
 
 def _decode_number(path: Path) -> int:
@@ -116,13 +116,13 @@ def test_planned_collections_are_empty_until_format_or_bind() -> None:
     plan = _PlannedRoot.relative_to("missing")
 
     for collection in (plan.loose, plan.runs, plan.regex_only):
-        assert isinstance(collection, _Matches)
+        assert isinstance(collection, Matches)
         assert len(collection) == 0 and tuple(collection) == ()
         with pytest.raises(IndexError):
             _ = collection[0]
-    assert isinstance(plan.loose, _Template) and len(plan.loose[:]) == 0
-    assert isinstance(plan.runs, _Template)
-    assert isinstance(plan.regex_only, _Matches) and not isinstance(plan.regex_only, _Template)
+    assert isinstance(plan.loose, Template) and len(plan.loose[:]) == 0
+    assert isinstance(plan.runs, Template)
+    assert isinstance(plan.regex_only, Matches) and not isinstance(plan.regex_only, Template)
     assert not hasattr(plan.regex_only, "format")
 
 
@@ -138,11 +138,11 @@ def test_formatting_files_and_nested_directories_is_recursive_planning_without_i
     part = batch.parts.format(part=7)
     loose = plan.loose.format(number=9)
 
-    assert isinstance(run, _FixedDir) and run.path == root / "run-12"
+    assert isinstance(run, FixedDir) and run.path == root / "run-12"
     assert run.child.deep.path == root / "run-12" / "child" / "deep"
-    assert isinstance(batch, _FixedDir) and batch.path == root / "run-12" / "child" / "deep" / "batch-3"
-    assert isinstance(part, _FixedFile) and part.path == batch.path / "part-7.bin"
-    assert isinstance(loose, _FixedFile) and loose.path == root / "loose-9.dat"
+    assert isinstance(batch, FixedDir) and batch.path == root / "run-12" / "child" / "deep" / "batch-3"
+    assert isinstance(part, FixedFile) and part.path == batch.path / "part-7.bin"
+    assert isinstance(loose, FixedFile) and loose.path == root / "loose-9.dat"
     assert part.defn.schema is _decode_number and loose.defn.schema is _decode_number
     assert all(hasattr(part, name) for name in ("read_bytes", "read_text", "load", "put"))
 

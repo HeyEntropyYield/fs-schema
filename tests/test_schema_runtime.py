@@ -10,15 +10,15 @@ from fs_schema import Match
 from fs_schema._fmt import CaptureField, CaptureMap, ParsedCaptures
 from fs_schema._schema import (
     Dir,
+    DirDefn,
     File,
-    _DirDefn,
+    FixedDir,
+    FixedFile,
+    Matches,
+    Template,
     _DirMatch,
     _FileMatch,
-    _FixedDir,
-    _FixedFile,
-    _Matches,
     _MissingDefault,
-    _Template,
 )
 
 
@@ -29,7 +29,7 @@ def _defn(*, alias: str | None = None) -> File[object]:
 def test_fixed_file_owns_declaration_path_and_performs_io(tmp_path: Path) -> None:
     defn = _defn()
     path = tmp_path / "nested" / "value.txt"
-    fixed = _FixedFile(os.fspath(path), defn)
+    fixed = FixedFile(os.fspath(path), defn)
 
     assert fixed.defn is defn
     assert fixed.path == path
@@ -37,7 +37,7 @@ def test_fixed_file_owns_declaration_path_and_performs_io(tmp_path: Path) -> Non
     assert fixed.name == "value.txt"
     assert fixed.stem == "value"
     assert fixed.suffix == ".txt"
-    assert fixed < _FixedFile(tmp_path / "nested" / "z.txt", defn)
+    assert fixed < FixedFile(tmp_path / "nested" / "z.txt", defn)
     assert fixed.__lt__(object()) is NotImplemented
     assert os.fspath(fixed) == os.fspath(path)
     fixed.put("first")
@@ -52,7 +52,7 @@ def test_matches_and_collections_keep_observed_capture_values(tmp_path: Path) ->
     first = _FileMatch(tmp_path / "2.txt", ParsedCaptures((), CaptureMap({"part": 2})), defn)
     second = _FileMatch(tmp_path / "3.txt", ParsedCaptures((), CaptureMap({"part": 3})), defn)
     source = [first, second]
-    collection = _Template(tmp_path, source, defn)
+    collection = Template(tmp_path, source, defn)
     sliced = collection[:1]
 
     # ParsedCaptures is the trusted immutable-ish parse result passed to a match;
@@ -61,11 +61,11 @@ def test_matches_and_collections_keep_observed_capture_values(tmp_path: Path) ->
     assert first.defn is defn
     assert dict(first.kwargs) == {"part": 2}
     assert collection.defn is defn and tuple(collection) == (first, second)
-    assert isinstance(sliced, _Template) and tuple(sliced) == (first,)
+    assert isinstance(sliced, Template) and tuple(sliced) == (first,)
     filtered = collection.filter(lambda _args, kwargs: kwargs["part"] == 3)
     empty = collection.filter(lambda _args, _kwargs: False)
-    assert isinstance(filtered, _Template) and tuple(filtered) == (second,)
-    assert isinstance(empty, _Template) and not empty
+    assert isinstance(filtered, Template) and tuple(filtered) == (second,)
+    assert isinstance(empty, Template) and not empty
     assert filtered.path == collection.path and filtered.defn is defn
     assert empty.path == collection.path and empty.defn is defn
     assert collection.find(lambda _args, kwargs: kwargs["part"] == 2) is first
@@ -89,7 +89,7 @@ def test_collection_queries_preserve_shape_order_and_capture_semantics(tmp_path:
         ParsedCaptures(("tail",), CaptureMap({"kind": "data", "tag": "raw"})),
         defn,
     )
-    collection = _Matches(tmp_path, (first, second, third), defn)
+    collection = Matches(tmp_path, (first, second, third), defn)
     calls: list[tuple[tuple[CaptureField, ...], dict[str, CaptureField]]] = []
 
     def select_image(args: tuple[CaptureField, ...], kwargs: CaptureMap) -> bool:
@@ -98,8 +98,8 @@ def test_collection_queries_preserve_shape_order_and_capture_semantics(tmp_path:
 
     filtered = collection.filter(select_image)
     rejected = collection.filter(lambda _args, _kwargs: False)
-    assert type(filtered) is _Matches and tuple(filtered) == (first, second)
-    assert type(rejected) is _Matches and not rejected
+    assert type(filtered) is Matches and tuple(filtered) == (first, second)
+    assert type(rejected) is Matches and not rejected
     assert filtered.path == collection.path and filtered.defn is defn
     assert calls == [
         ((None,), {"kind": "image", "tag": None}),
@@ -110,7 +110,7 @@ def test_collection_queries_preserve_shape_order_and_capture_semantics(tmp_path:
     assert collection.find(lambda _args, _kwargs: False) is None
 
     unconstrained = collection.where()
-    assert type(unconstrained) is _Matches and tuple(unconstrained) == tuple(collection)
+    assert type(unconstrained) is Matches and tuple(unconstrained) == tuple(collection)
     assert tuple(collection.where("tail")) == (second, third)
     assert tuple(collection.where(None)) == (first, second, third)
     assert tuple(collection.where(kind="image")) == (first, second)
@@ -118,9 +118,9 @@ def test_collection_queries_preserve_shape_order_and_capture_semantics(tmp_path:
     assert tuple(collection.where("tail", kind="image", tag="raw")) == (second,)
     assert not collection.where("tail", "extra")
 
-    planned = _Matches(tmp_path, (), defn)
-    captureless = _Matches(tmp_path, (), File(match="value", min=0))
-    fixed = _Matches(tmp_path, (), File(name="value"))
+    planned = Matches(tmp_path, (), defn)
+    captureless = Matches(tmp_path, (), File(match="value", min=0))
+    fixed = Matches(tmp_path, (), File(name="value"))
     with pytest.raises(KeyError, match="missing"):
         collection.where(missing="value")
     with pytest.raises(KeyError, match="missing"):
@@ -147,7 +147,7 @@ def test_where_none_is_a_positional_wildcard(tmp_path: Path) -> None:
     defn = File(fmt="{}_{}.txt", min=0)
     first = _FileMatch(tmp_path / "first_000000.txt", ParsedCaptures(("first", "000000"), CaptureMap({})), defn)
     second = _FileMatch(tmp_path / "second_000001.txt", ParsedCaptures(("second", "000001"), CaptureMap({})), defn)
-    collection = _Matches(tmp_path, (first, second), defn)
+    collection = Matches(tmp_path, (first, second), defn)
 
     assert tuple(collection.where(None, "000000")) == (first,)
     assert tuple(collection.where("second", None)) == (second,)
@@ -159,11 +159,11 @@ def test_matches_and_templates_are_distinct_but_constructors_copy_collections(tm
     match = _FileMatch(tmp_path / "part-one", ParsedCaptures(("one",), CaptureMap({})), plain)
     template_match = _FileMatch(tmp_path / "part-1", ParsedCaptures((), CaptureMap({"part": 1})), formatted)
 
-    matches = _Matches(tmp_path, (match,), plain)
-    template = _Template(tmp_path, (template_match,), formatted)
+    matches = Matches(tmp_path, (match,), plain)
+    template = Template(tmp_path, (template_match,), formatted)
     assert tuple(matches) == (match,)
     assert tuple(template) == (template_match,)
-    copied = _Matches(tmp_path, (template_match,), plain)
+    copied = Matches(tmp_path, (template_match,), plain)
     assert tuple(copied) == (template_match,) and copied.defn is plain
     assert not hasattr(matches, "format")
 
@@ -181,14 +181,14 @@ def test_directory_definition_rejects_cross_child_lookup_collisions(
     first: tuple[str, str | None], second: tuple[str, str | None], key: str
 ) -> None:
     with pytest.raises(ValueError, match=repr(key)):
-        _DirDefn(Dir(name="."), (File(name=first[0], alias=first[1]), File(name=second[0], alias=second[1])))
+        DirDefn(Dir(name="."), (File(name=first[0], alias=first[1]), File(name=second[0], alias=second[1])))
 
 
 def test_directory_lookup_derives_keys_and_keeps_anonymous_collection_integer_only(tmp_path: Path) -> None:
-    fixed = _FixedFile(tmp_path / "same-name", File(name="same-name", alias="same-name"))
-    anonymous = _Matches(tmp_path, (), File(fmt="{n:d}", min=0))
-    defn = _DirDefn(Dir(name="."), (fixed.defn, anonymous.defn))
-    directory = _FixedDir(tmp_path, (fixed, anonymous), defn)
+    fixed = FixedFile(tmp_path / "same-name", File(name="same-name", alias="same-name"))
+    anonymous = Matches(tmp_path, (), File(fmt="{n:d}", min=0))
+    defn = DirDefn(Dir(name="."), (fixed.defn, anonymous.defn))
+    directory = FixedDir(tmp_path, (fixed, anonymous), defn)
     assert directory["same-name"] is directory["same_name"] is fixed
     assert directory.same_name is fixed and directory[1] is anonymous
     with pytest.raises(AttributeError):
@@ -201,13 +201,13 @@ def test_directory_lookup_derives_keys_and_keeps_anonymous_collection_integer_on
 
 def test_runtime_constructors_are_beartype_checked(tmp_path: Path) -> None:
     with pytest.raises(BeartypeCallHintParamViolation):
-        _FixedFile(tmp_path, object())  # pyright: ignore[reportArgumentType]
+        FixedFile(tmp_path, object())  # pyright: ignore[reportArgumentType]
     with pytest.raises(BeartypeCallHintParamViolation):
-        _DirDefn(File(name="wrong"))  # pyright: ignore[reportArgumentType]
+        DirDefn(File(name="wrong"))  # pyright: ignore[reportArgumentType]
 
 
 def test_directory_match_carries_its_defn_and_captures(tmp_path: Path) -> None:
-    defn = _DirDefn(Dir(match=r"run-(?P<n>[0-9]+)"))
+    defn = DirDefn(Dir(match=r"run-(?P<n>[0-9]+)"))
     matched = _DirMatch(tmp_path / "run-1", ParsedCaptures((), CaptureMap({"n": "1"})), (), defn)
     assert matched.defn is defn and matched.defn.defn is defn.defn
     assert matched.kwargs["n"] == "1"
@@ -219,7 +219,7 @@ def test_schema_ordinary_construction_has_fixed_directory_protocol(tmp_path: Pat
     class Concrete(Schema):
         pass
 
-    defn = _DirDefn(Dir(name="."))
+    defn = DirDefn(Dir(name="."))
     fixed = Concrete(tmp_path, (), defn)
     assert type(fixed) is Concrete and fixed.path == tmp_path
     assert not hasattr(fixed, "args") and not hasattr(fixed, "kwargs")
