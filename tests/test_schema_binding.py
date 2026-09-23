@@ -114,8 +114,8 @@ def test_directory_matches_are_ordinary_dir_matches_with_captures(tmp_path: Path
     assert isinstance(bound.both, Template) and bound.both[0].kwargs["n"] == 3
     assert isinstance(bound.both[0], Child) and isinstance(bound.both[0], Match)
     assert Root.fixed is Child
-    assert Root.formatted is Template
-    assert Root.regexes is Matches
+    assert issubclass(Root.formatted, Template)
+    assert issubclass(Root.regexes, Matches)
     assert not hasattr(bound.formatted[0], "format")
 
 
@@ -208,7 +208,7 @@ def test_exact_root_and_fixed_explicit_inline_child_types(tmp_path: Path) -> Non
     assert type(bound.explicit) is Explicit
     assert type(bound.inline) is Root.inline
     assert type(bound.inline.deep) is Root.inline.deep
-    assert Root.inline.deep.leaf is FixedFile
+    assert issubclass(Root.inline.deep.leaf, FixedFile)
     assert not hasattr(bound, "args") and not isinstance(bound, Match)
     assert not hasattr(bound.explicit, "kwargs")
 
@@ -231,7 +231,7 @@ def test_repeated_schema_rhs_uses_shared_collection_and_dir_match_types(tmp_path
     assert isinstance(bound, Root)
     assert isinstance(bound.explicit, Template)
     assert isinstance(bound.inline, Matches) and not isinstance(bound.inline, Template)
-    assert Root.explicit is Template and Root.inline is Matches
+    assert issubclass(Root.explicit, Template) and issubclass(Root.inline, Matches)
     assert all(isinstance(item, Item) and isinstance(item, Match) for item in bound.explicit)
     assert [item.kwargs["number"] for item in bound.explicit] == [1, 2]
     assert isinstance(bound.inline[0], Match) and bound.inline[0].kwargs["number"] == "3"

@@ -28,17 +28,17 @@ def test_reifies_each_raw_grammar_branch_and_stable_class_navigation() -> None:
 
     root = LayoutSchema._schema_defn
     assert [type(defn) for defn in root.defns] == [File, File, DirDefn, DirDefn, File]
-    assert LayoutSchema.loose_txt is FixedFile
-    assert LayoutSchema.parts is Template
+    assert issubclass(LayoutSchema.loose_txt, FixedFile)
+    assert issubclass(LayoutSchema.parts, Template)
     assert LayoutSchema.explicit is Explicit
-    assert LayoutSchema.explicit.leaf is FixedFile
-    assert LayoutSchema.runs is Template
+    assert issubclass(LayoutSchema.explicit.leaf, FixedFile)
+    assert issubclass(LayoutSchema.runs, Template)
     runs = root.defns[3]
     assert isinstance(runs, DirDefn)
     assert runs.child_type is not None
     assert runs.child_type.deep is runs.child_type.deep
-    assert runs.child_type.deep.leaf is FixedFile
-    assert LayoutSchema.named is FixedFile
+    assert issubclass(runs.child_type.deep.leaf, FixedFile)
+    assert issubclass(LayoutSchema.named, FixedFile)
     assert not hasattr(LayoutSchema, "unknown")
     assert not hasattr(LayoutSchema, "loose.txt")
     assert not hasattr(LayoutSchema, "__parameters__")
@@ -257,7 +257,7 @@ def test_repeated_class_navigation_is_not_a_reusable_schema_declaration() -> Non
     class Parent(Schema):
         schema = {Dir(fmt="item-{n:d}", alias="items"): {}}
 
-    assert Parent.items is Template
+    assert issubclass(Parent.items, Template)
     with pytest.raises(TypeError, match=r"Invalid[.]schema invalid entry at key 'reused'"):
         _define({"reused": Parent.items})
 
@@ -403,5 +403,23 @@ def test_coincident_identities_on_one_child_are_valid() -> None:
     class Coincident(Schema):
         schema = {FILES: [File("same", alias="same"), File(match="part-.+", alias="parts")]}
 
-    assert Coincident.same is FixedFile
-    assert Coincident.parts is Matches
+    assert issubclass(Coincident.same, FixedFile)
+    assert Coincident.same.match is None
+    assert issubclass(Coincident.parts, Matches)
+    assert Coincident.parts.match == "part-.+"
+
+
+def test_subclass_overrides_one_nested_file_and_keeps_siblings() -> None:
+    class Base(Schema):
+        schema = {"bucket": {"keep": "keep.txt", "flip": File("flip.txt", optional=True)}}
+
+    class Child(Base):
+        schema = {"bucket": {"flip": "flip.txt"}}
+
+    bucket = Child._schema_defn.defns[0]
+    assert isinstance(bucket, DirDefn)
+    by_name = {}
+    for defn in bucket.defns:
+        assert isinstance(defn, File)
+        by_name[defn.name] = defn.min
+    assert by_name == {"keep.txt": 1, "flip.txt": 1}

@@ -381,6 +381,11 @@ def _load_model(path: Path, schema: type[_L_co]) -> _L_co | Exception:
 
 
 class FixedFile(_Fixed, Generic[_L_co]):
+    alias: ClassVar[str | None]
+    fmt: ClassVar[FmtLike | None]
+    match: ClassVar[str | None]
+    min: ClassVar[int]
+    max: ClassVar[int | None]
     defn: File[_L_co]
 
     def __init__(self, path: PathIsh, defn: File[_L_co]) -> None:
@@ -456,6 +461,11 @@ class _FileMatch(_CaptureState, FixedFile[_L_co], Generic[_L_co]):
 
 
 class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
+    alias: ClassVar[str | None]
+    fmt: ClassVar[FmtLike | None]
+    match: ClassVar[str | None]
+    min: ClassVar[int]
+    max: ClassVar[int | None]
     path: Path
     _matches: tuple[_M_co, ...]
     defn: _Defn_co
@@ -563,6 +573,11 @@ else:
 
 
 class FixedDir(_Fixed):
+    alias: ClassVar[str | None]
+    fmt: ClassVar[FmtLike | None]
+    match: ClassVar[str | None]
+    min: ClassVar[int]
+    max: ClassVar[int | None]
     _children: tuple[BoundChild, ...]
     _lookup: Mapping[str, int]
     stamps: dict[str, FmtField]
@@ -991,8 +1006,14 @@ def _merge_defns(base: Sequence[Defn], local: Sequence[Defn]) -> tuple[Defn, ...
                 positions[identity] = len(merged)
             merged.append(defn)
         else:
-            merged[positions[identity]] = defn
+            merged[positions[identity]] = _merge_one(merged[positions[identity]], defn)
     return tuple(merged)
+
+
+def _merge_one(base: Defn, local: Defn) -> Defn:
+    if isinstance(base, DirDefn) and isinstance(local, DirDefn):
+        return DirDefn(local.defn, _merge_defns(base.defns, local.defns), local.child_type or base.child_type)
+    return local
 
 
 def _children_satisfy(actual: Sequence[Defn], required: Sequence[Defn]) -> bool:
@@ -1191,10 +1212,17 @@ class SchemaCls(type):
         if name != node.alias and name != _normalize_name(node.name):
             raise AttributeError(name)
         if node.name:
-            child_type: type[object] = FixedFile if isinstance(defn, File) else defn.child_type or FixedDir
+            if isinstance(defn, File):
+                base: type[object] = FixedFile
+            elif defn.child_type is not None:
+                return defn.child_type
+            else:
+                base = FixedDir
+        elif node.fmt is not None:
+            base = Template
         else:
-            child_type = Template if node.fmt is not None else Matches
-        return child_type
+            base = Matches
+        return _member_view(cls, name, base, node)
 
     @property
     def RootT(cls) -> "type[SchemaRoot[Schema]]":
@@ -1208,6 +1236,31 @@ class SchemaRoot(FixedDir, Generic[_S]):
 
     def bind(self) -> "_S | MismatchErr":
         return self._schema_type.bind(self.path)
+
+
+def _member_view(cls: "type[Schema]", name: str, base: type[object], node: Node) -> type[object]:
+    raw = vars(cls).get("_member_views")
+    if not isinstance(raw, dict):
+        raw = {}
+        type.__setattr__(cls, "_member_views", raw)
+    cache = typing.cast(dict[str, type[object]], raw)
+    cached = cache.get(name)
+    if isinstance(cached, type):
+        return cached
+    viewed = type(
+        base.__name__,
+        (base,),
+        {
+            "__module__": cls.__module__,
+            "alias": node.alias,
+            "fmt": node.fmt,
+            "match": node.match,
+            "min": node.min,
+            "max": node.max,
+        },
+    )
+    cache[name] = viewed
+    return viewed
 
 
 def _is_root_type_for(value: object, schema_type: type[_S]) -> TypeIs[type[SchemaRoot[_S]]]:
