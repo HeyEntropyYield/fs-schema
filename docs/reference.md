@@ -251,10 +251,10 @@ same_request = delivery.transfer["request.json"]
 ```
 
 Use `exists_opt(path)` when an absent optional node should become `None` rather
-than a missing path:
+than a missing path. `exists_opt(None)` is `None`.
 
 ```text
-exists_opt(path: str | os.PathLike[str]) -> Path | None
+exists_opt(path: str | os.PathLike[str] | None) -> Path | None
 ```
 
 ### Template collections and matches

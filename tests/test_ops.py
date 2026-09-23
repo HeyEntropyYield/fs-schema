@@ -27,6 +27,7 @@ def test_exists_and_mismatch_helpers(tmp_path: Path) -> None:
     assert _ops.exists_opt(present) == present
     assert _ops.exists_opt(str(present)) == present
     assert _ops.exists_opt(tmp_path / "missing.txt") is None
+    assert _ops.exists_opt(None) is None
 
     mismatch = _ops.MismatchErr("missing")
     assert _ops.is_mismatch(mismatch)

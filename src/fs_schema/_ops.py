@@ -33,7 +33,9 @@ def raise_mismatch(x: _T | MismatchErr) -> _T:
     return raise_exn(x)
 
 
-def exists_opt(path: PathIsh) -> Path | None:
+def exists_opt(path: PathIsh | None) -> Path | None:
+    if path is None:
+        return None
     candidate = Path(path)
     return candidate if candidate.exists() else None
 
