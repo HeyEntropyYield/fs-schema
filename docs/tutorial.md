@@ -322,17 +322,43 @@ def ingest(
 are explicit transitions rather than conventions attached to four `Path`
 values.
 
+## glom
+glom can read a deep directory, file, and/or file contents path, or return default, heavily reducing existence checking code.
+
+```python
+from glom import T, glom
+
+
+def latest_part(downloaded: DownloadedDelivery) -> Path | None:
+    return glom(downloaded, T.batches.days[-1].parts[-1].path, default=None)
+```
+
+More on the [glom](integrations.md) page.
+
 ## What these calls do not promise
 
 `relative_to` and `format` only plan paths. `create` and `put` write. `put` replaces one file atomically and creates missing parents. `create` can leave a partial tree if a later write fails. `bind` checks names and shape. `load` checks file contents.
 
-## Companion listings
+## Before and after
 
-The repository keeps the complete comparison behind this migration:
+<div class="grid" markdown="block" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem">
 
-- [Path-based delivery listing](https://github.com/HeyEntropyYield/fs-schema/blob/master/examples/data_delivery_before.py)
-- [State-based delivery listing](https://github.com/HeyEntropyYield/fs-schema/blob/master/examples/data_delivery_after.py)
+<details markdown="block">
+<summary>Paths</summary>
 
-Both retain placeholder integrations. Read them as before/after design
-listings, not as a claim that a delivery runs without application-specific
-network, conversion, and warehouse implementations.
+```python
+--8<-- "examples/data_delivery_before.py"
+```
+
+</details>
+
+<details markdown="block">
+<summary>States</summary>
+
+```python
+--8<-- "examples/data_delivery_after.py"
+```
+
+</details>
+
+</div>

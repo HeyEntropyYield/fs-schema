@@ -206,7 +206,7 @@ delivery = fss.raise_mismatch(
 )
 ```
 
-`Schema.bind` also accepts a `Located` value. A planned root binds itself.
+`Schema.bind` takes a path. A string, a `Path`, and any value with `__fspath__` all work, including a schema node. A planned root binds itself.
 
 ```python
 validated_again = Delivery.bind(delivery)
@@ -217,7 +217,7 @@ validated_from_plan = planned_delivery.bind()
 Bind checks structure and counts now. Ignores extras. First mismatch wins.
 
 ```text
-Schema.bind(root: str | os.PathLike[str] | Located) -> Self | MismatchErr
+Schema.bind(root: str | os.PathLike[str]) -> Self | MismatchErr
 SchemaRoot[S].bind() -> S | MismatchErr
 is_mismatch(x: object) -> TypeIs[MismatchErr]
 raise_mismatch(x: T | MismatchErr) -> T

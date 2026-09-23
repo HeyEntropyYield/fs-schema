@@ -618,7 +618,6 @@ version = "0.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "beartype" },
-    { name = "glom" },
     { name = "parse" },
     { name = "plum-dispatch" },
     { name = "typing-extensions" },
@@ -649,6 +648,7 @@ dev = [
     { name = "covdefaults" },
     { name = "coverage" },
     { name = "docopt" },
+    { name = "glom" },
     { name = "httpx" },
     { name = "mashumaro", extra = ["orjson"] },
     { name = "packaging" },
@@ -675,7 +675,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "beartype", specifier = ">=0.23.0rc1" },
-    { name = "glom" },
     { name = "mashumaro", marker = "extra == 'mashumaro'", specifier = ">=3.22" },
     { name = "mashumaro", extras = ["msgpack"], marker = "extra == 'msgpack'", specifier = ">=3.22" },
     { name = "mashumaro", extras = ["orjson"], marker = "extra == 'orjson'", specifier = ">=3.22" },
@@ -695,6 +694,7 @@ dev = [
     { name = "covdefaults" },
     { name = "coverage" },
     { name = "docopt" },
+    { name = "glom" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "mashumaro", extras = ["orjson"], specifier = ">=3.22" },
     { name = "packaging" },

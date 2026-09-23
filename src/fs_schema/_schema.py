@@ -47,6 +47,20 @@ _M_co = TypeVar("_M_co", bound="Match", covariant=True)
 _Default = TypeVar("_Default")
 
 
+# Section order:
+#   Forward-safe cycle vocabulary. Match protocol, sort key.
+#   User schema file/dir declarations. Node, File, Dir, FILES, Layout.
+#   Reified definitions. DirDefn and Defn.
+#   Runtime values. Path passthrough and FixedFile.
+#   Runtime template matches and collections. Matches, Template, Child.
+#   Fixed directories. FixedDir and directory matches.
+#   Plan, format, and create. Planned tree, stamps, write_plan.
+#   Names, captures, and declaration checks.
+#   Bind. A directory listing becomes bound nodes or MismatchErr.
+#   Schema classes. SchemaCls, SchemaRoot, Schema.
+# Compilation and class member views live in _compile.py.
+
+
 ## Forward-safe cycle vocabulary
 
 
@@ -522,6 +536,9 @@ else:
     GetChild: TypeAlias = BoundChild
 
 
+## Fixed directories
+
+
 class FixedDir(_Fixed):
     alias: ClassVar[str | None]
     fmt: ClassVar[FmtLike | None]
@@ -623,6 +640,9 @@ def _bound_dir_match_type(defn: DirDefn) -> type[_DirMatch]:
     return generated
 
 
+## Plan, format, and create
+
+
 def _plan_children(path: Path, dir_defn: DirDefn) -> tuple[Child, ...]:
     return tuple(_plan_dir_defn(path, defn) for defn in dir_defn.defns)
 
@@ -699,6 +719,9 @@ def _reject_bound_create(node: object) -> None:
         raise TypeError(f"create on bound {type(node).__name__}; use root()")
 
 
+## Names, captures, and declaration checks
+
+
 def defn_node(defn: Defn) -> Node:
     return defn if isinstance(defn, File) else defn.defn
 
@@ -751,8 +774,22 @@ FsCache: TypeAlias = dict[Path, CacheSeq[Path]]
 _MatchValue = TypeVar("_MatchValue", bound=Match)
 
 
+## Bind
+
+
 def _is_kind(path: Path, defn: Defn) -> bool:
     return path.is_file() if isinstance(defn, File) else path.is_dir()
+
+
+def _dangling_names(defn: Defn, listing: Sequence[Path]) -> list[str]:
+    node = defn_node(defn)
+    names: list[str] = []
+    for target in listing:
+        if _is_kind(target, defn) or not target.is_symlink() or target.exists():
+            continue
+        if node.select(target.name) is not None:
+            names.append(target.name)
+    return names
 
 
 def _bind_children(path: Path, dir_defn: DirDefn, cache: FsCache) -> tuple[BoundChild, ...] | MismatchErr:
@@ -787,12 +824,15 @@ def _bind_dir_defn(path: Path, position: int, defn: Defn, cache: FsCache) -> Bou
             return MismatchErr(f"expected {kind}: {target}")
         return _bind_fixed(target, defn, cache)
 
-    if is_mismatch(matches := _bind_matches(defn, _listing(path, cache), cache)):
+    listing = _listing(path, cache)
+    if is_mismatch(matches := _bind_matches(defn, listing, cache)):
         return matches
     count = len(matches)
     if count < node.min or (node.max is not None and count > node.max):
         upper = "unbounded" if node.max is None else str(node.max)
-        return MismatchErr(f"expected {node.min}..{upper} matches for defn {position}, found {count}: {path}")
+        dangling = _dangling_names(defn, listing)
+        suffix = f" (dangling: {', '.join(dangling)})" if dangling else ""
+        return MismatchErr(f"expected {node.min}..{upper} matches for defn {position}, found {count}{suffix}: {path}")
     return Template(path, matches, defn) if node.fmt is not None else Matches(path, matches, defn)
 
 
@@ -913,6 +953,9 @@ def bind_defns(root: PathIsh, defns: Sequence[Defn]) -> FixedDir | MismatchErr:
     return FixedDir(path, children, dir_defn)
 
 
+## Schema classes
+
+
 class SchemaCls(type):
     def __new__(
         metacls: "type[SchemaCls]",
@@ -1019,8 +1062,8 @@ class Schema(FixedDir, metaclass=SchemaCls):
         return _root_type_for(cls)(path, _plan_children(path, cls._schema_defn), cls._schema_defn)
 
     @classmethod
-    def bind(cls: type[_S], root: PathIsh | Located) -> "_S | MismatchErr":
-        path = root.path if isinstance(root, Located) else Path(root)
+    def bind(cls: type[_S], root: PathIsh) -> "_S | MismatchErr":
+        path = Path(root)
         if is_mismatch(children := _bind_children(path, cls._schema_defn, {})):
             return children
         return cls(path, children, cls._schema_defn)

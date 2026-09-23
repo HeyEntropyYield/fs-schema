@@ -11,7 +11,7 @@ extra_css = ["stylesheets/extra.css"]
 watch = [
   "CHANGELOG.md",
   "README.md",
-  "examples/quickstart.py",
+  "examples/**",
   "run.sh",
 ]
 
@@ -19,6 +19,7 @@ nav = [
   { Home = "index.md" },
   { "API reference" = "reference.md" },
   { Tutorial = "tutorial.md" },
+  { Integrations = "integrations.md" },
   { Changelog = "changelog.md" },
 ]
 

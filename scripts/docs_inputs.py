@@ -13,7 +13,7 @@ import subprocess
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from markdown import Markdown
 from markdown.extensions import Extension
@@ -169,13 +169,24 @@ def _workflow_paths(root: Path) -> set[str]:
     return {line.strip().removeprefix("-").strip() for line in block.group("body").splitlines()}
 
 
+def _covers(pattern: str, path: str) -> bool:
+    return path == pattern or PurePosixPath(path).match(pattern)
+
+
+def _uncovered(paths: set[str], patterns: set[str]) -> list[str]:
+    return sorted(path for path in paths if not any(_covers(pattern, path) for pattern in patterns))
+
+
 def require_fresh(root: Path = REPO) -> None:
     """Fail when ``watch`` or ``docs.yml`` paths drift from the snippet closure."""
     external = set(external_inputs(root))
     watch = set(_zensical(root).project.watch)
-    if watch != external:
-        raise DocsInputError(f"zensical.toml watch {sorted(watch)} != snippet closure {sorted(external)}")
-    missing = sorted((external | _ALWAYS) - _workflow_paths(root))
+    stale = sorted(item for item in watch if "*" not in item and item not in external)
+    if uncovered := _uncovered(external, watch):
+        raise DocsInputError(f"zensical.toml watch misses {uncovered}")
+    if stale:
+        raise DocsInputError(f"zensical.toml watch lists files that are not snippets: {stale}")
+    missing = _uncovered(external | set(_ALWAYS), _workflow_paths(root))
     if missing:
         raise DocsInputError(f"docs.yml paths missing {missing}")
 

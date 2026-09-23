@@ -255,6 +255,19 @@ def test_bind_result_bool_and_empty_collection(tmp_path: Path) -> None:
     assert not bound.parts
 
 
+def test_dangling_symlink_is_named(tmp_path: Path) -> None:
+    (tmp_path / "gone.png").symlink_to(tmp_path / "missing.png")
+
+    class Pics(Schema):
+        schema = {"images": File(match=r".+\.png", min=1)}
+
+    err = Pics.bind(tmp_path)
+    assert isinstance(err, MismatchErr)
+    assert "gone.png" in str(err)
+    (tmp_path / "here.png").write_bytes(b"png")
+    assert not isinstance(Pics.bind(tmp_path), MismatchErr)
+
+
 def test_root_kind_validation_including_empty_schemas(tmp_path: Path) -> None:
     class Empty(Schema):
         pass

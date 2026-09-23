@@ -56,8 +56,15 @@ def test_all_documented_python_typechecks() -> None:
         config.write_text(json.dumps(PYRIGHT_CONFIG))
         modules: list[str] = []
         for path in DOCS:
+            inline = [
+                source
+                for match in re.finditer(r"```python\n(.*?)\n```", path.read_text(), flags=re.DOTALL)
+                if not re.fullmatch(r'--8<-- "([^"]+)"', (source := match.group(1)).strip())
+            ]
+            if not inline:
+                continue
             module = generated / f"{path.parent.name}-{path.stem}.py"
-            module.write_text(_python_from(path))
+            module.write_text(DYNAMIC_CHILD_CHECKS + "\n".join(inline) + "\n")
             modules.append(str(module))
 
         result = subprocess.run(

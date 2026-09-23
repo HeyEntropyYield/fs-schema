@@ -10,7 +10,7 @@ on:
       - CHANGELOG.md
       - README.md
       - docs/**
-      - examples/quickstart.py
+      - examples/**
       - run.sh
       - zensical.toml
   workflow_dispatch:
