@@ -584,7 +584,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [
@@ -614,7 +614,7 @@ wheels = [
 
 [[package]]
 name = "fs-schema"
-version = "0.5.0"
+version = "0.6.0"
 source = { editable = "." }
 dependencies = [
     { name = "beartype" },
@@ -803,7 +803,7 @@ name = "importlib-metadata"
 version = "9.0.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "zipp" },
+    { name = "zipp", marker = "python_full_version < '3.14'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/6f/7e/1e7e8dc30634b93ebb3d58a3dea569ad146e656218d3960ab04f62047b29/importlib_metadata-9.0.1.tar.gz", hash = "sha256:ab830580bc0ef3db61ce8fae716389e5462b67e033018bab6d8f80ef17172f99", size = 59124, upload-time = "2026-08-28T15:30:34.646Z" }
 wheels = [
@@ -1594,7 +1594,7 @@ resolution-markers = [
     "python_full_version < '3.11'",
 ]
 dependencies = [
-    { name = "pytest" },
+    { name = "pytest", marker = "python_full_version < '3.11'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/db/6e/8ca6e6c259a299a807501134850bf3e90a49c6d9d7afdcb2474efff18f39/pytest_params-0.3.0.tar.gz", hash = "sha256:c8755470c34227b5f3fcd1a8f2048f447c62463f899006eda6b2975b6c0f1ace", size = 85050, upload-time = "2025-04-27T22:37:31.707Z" }
 wheels = [
@@ -1610,7 +1610,7 @@ resolution-markers = [
     "python_full_version >= '3.11' and python_full_version < '3.14'",
 ]
 dependencies = [
-    { name = "pytest" },
+    { name = "pytest", marker = "python_full_version >= '3.11'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/46/c1/d12d1cb8ed614ca58d519be73a4e1c71bc1aa74217627389b781de495eb4/pytest_params-0.5.0.tar.gz", hash = "sha256:765aaaf72e9fc39567d5ca5d4128007d12272217aa037ffc527687eb86abb442", size = 7229, upload-time = "2026-07-05T23:01:37.571Z" }
 wheels = [
