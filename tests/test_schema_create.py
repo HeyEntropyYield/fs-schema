@@ -78,6 +78,8 @@ def test_create_rejects_unknown_collection_and_duplicate_keys(tmp_path: Path) ->
         fs.create(days={"nope": {}})
     with pytest.raises(TypeError, match="duplicate create keys"):
         fs.create({"manifest": "{}"}, manifest="{}")
+    with pytest.raises(TypeError, match=r"create keys.*name one child"):
+        fs.create(manifest="a", **{"manifest.json": "b"})
     with pytest.raises(NotFoundLookupError):
         fs.create(manifest={"nope": 1})
     with pytest.raises(BeartypeCallHintParamViolation):
@@ -185,6 +187,12 @@ class _Shelf(Schema):
 
 class _Groups(Schema):
     schema = {Dir(alias="groups", fmt="n-{n:d}", min=0): {"files": File(fmt="{label}-{n:d}.txt")}}
+
+
+def test_bare_pair_asks_for_a_list(tmp_path: Path) -> None:
+    when = datetime(2026, 9, 17)
+    with pytest.raises(TypeError, match=r"one \(captures, payload\) pair"):
+        _Shelf.relative_to(tmp_path).create(days=({"day": when}, {"note": "row\n"}))
 
 
 def test_stamped_file_collections_take_a_body(tmp_path: Path) -> None:

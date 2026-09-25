@@ -120,6 +120,8 @@ def _dispatch_collection(template: Matches[Match, Defn], defn: Defn, key: str, v
         _fill_stamped_file(template, defn, key, Path(value))
         return
     if _is_member_seq(value):
+        if _is_member(value):
+            raise TypeError(f"{key!r} value is one (captures, payload) pair; pass a list of pairs")
         if defn_node(defn).fmt is None:
             raise TypeError(f"{key!r} has no formatter; pass a basename mapping")
         if not isinstance(template, Template):
