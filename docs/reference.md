@@ -18,7 +18,7 @@ import fs_schema as fss
 | Declarations | `File`, `Dir`, `FILES`, `dt` |
 | Paths and matches | `Located`, `Match`, `exists_opt` |
 | Result helpers | `MismatchErr`, `is_mismatch`, `raise_mismatch`, `raise_exn` |
-| Writing | `put`, `link_to`, `copy_to`, `create` |
+| Writing | `put`, `link_to`, `copy_to`, `captures`, `create` |
 | Package metadata | `__version__` |
 
 All names in this table are available from `fs_schema`.
@@ -415,15 +415,19 @@ dynamic static lookup loses that precision.
 A file argument is whatever `put` accepts. A directory argument names child aliases. Leave an optional child out, or pass `None`, and it stays absent. An unknown alias raises `KeyError`. `create()` with no arguments creates that directory and every required child directory. It does not write files, and it does not create optional directories or collection members.
 
 You do not `create` a collection as a whole.
-`format(**captures)` names one member.
+`format(**captures)` names one member. That is the ordinary write.
+`create` on that member writes it.
 If that member is a directory, every template under it remembers the captures.
 `parse(source)` names one member from a basename, a path, or another schema node.
 A basename that does not fit raises `ValueError` there, not later at `bind`.
-`create` on the member writes it.
 A path-like body is copied.
 A string body is text, even when it names a file that exists.
 
-A list of members can go in the spec. Each item is a `(captures, payload)` pair: the captures are the `format` arguments, and the payload is what you would pass to `create` on that member. A mapping of filename to body writes those names as given. The keys are filenames. If a key is a capture name instead of a filename, the error says so.
+A list of `(captures, payload)` pairs is the bulk form, for many members in one `create`.
+The left side is `captures(*args, **kwargs)`, or a dict of names. A dict is turned into `captures` before the write.
+`captures(part=0)` and `{"part": 0}` are the same named field. `captures(0)` fills `{}` or `{0}`. It does not fill `{part}`.
+The payload is what you would pass to `create` on that member.
+A mapping of filename to body writes those names as given. The keys are filenames. If a key is a capture name instead of a filename, the error says so.
 
 If a file collection's captures were all remembered by an enclosing `format`, pass the file body by itself. A directory collection does not do that, because a mapping there already means filenames. A bare body that is still missing a capture raises `TypeError` and names the missing one. Two different values for the same capture raise `ValueError`.
 
@@ -434,7 +438,10 @@ manifest = Manifest("delivery-42", 1_000)
 parquet_bytes = b"parquet payload"
 fs.create(
     manifest=manifest,
-    batches={"days": [({"day": event_date}, {"parts": [({"part": 0}, parquet_bytes)]})]},
+    batches={"days": [(  # directory collection: one pair per day
+        {"day": event_date},  # dict of format names
+        {"parts": [(fss.captures(part=0), parquet_bytes)]},  # same slot via captures
+    )]},
 )
 another = fs.batches.days.format(day=datetime(2026, 9, 11))
 another.parts.format(part=0).create(b"next")

@@ -256,10 +256,12 @@ def curate(
         return fss.MismatchErr("delivery changed after validation")
 
     fs = CuratedDataset.relative_to(target)
-    days = [
-        ({"day": source_day.kwargs.day}, {"parts": [({"part": 0}, convert_parts([part.path for part in source_day.parts]))]})
-        for source_day in delivery.batches.days
-    ]
+    days = [(  # directory collection: one pair per day
+        {"day": source_day.kwargs.day},  # dict of format names
+        {"parts": [(  # same slot via captures
+            fss.captures(part=0), convert_parts([part.path for part in source_day.parts]),
+        )]},
+    ) for source_day in delivery.batches.days]
     fs.create(partitions={"days": days}, manifest=CuratedManifest(delivery_id=manifest.delivery_id, partitions=len(days)))
     return fs.bind()
 ```

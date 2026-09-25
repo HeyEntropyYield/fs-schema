@@ -10,7 +10,7 @@ import pytest
 from beartype.roar import BeartypeCallHintParamViolation
 from plum import NotFoundLookupError
 
-from fs_schema import Dir, File, Schema
+from fs_schema import Dir, File, Schema, captures
 
 
 class Batch(Schema):
@@ -32,6 +32,27 @@ class Delivery(Schema):
 
 class Export(Schema):
     schema = {"jetson": File(fmt="end2end_jetson.onnx", min=0, max=1)}
+
+
+def test_captures_named_matches_a_dict_pair(tmp_path: Path) -> None:
+    day = datetime(2026, 9, 17)
+    root = Delivery.relative_to(tmp_path)
+    root.create(days=[(captures(day=day), {"parts": [({"part": 1}, "a")]})])
+    assert (tmp_path / "2026-09-17" / "part-1.jsonl").read_text() == "a"
+
+
+def test_captures_positional_field(tmp_path: Path) -> None:
+    class Items(Schema):
+        schema = {"items": File(fmt="{}.txt", min=0)}
+
+    Items.relative_to(tmp_path).create(items=[(captures("hello"), "body")])
+    assert (tmp_path / "hello.txt").read_text() == "body"
+
+
+def test_captures_rejects_an_unknown_name(tmp_path: Path) -> None:
+    day = datetime(2026, 9, 17)
+    with pytest.raises(KeyError, match="nope"):
+        Delivery.relative_to(tmp_path).create(days=[(captures(nope=day), {})])
 
 
 def test_create_then_bind_omits_unwritten_optionals(tmp_path: Path) -> None:

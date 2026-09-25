@@ -10,7 +10,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 keywords = ["filesystem", "schema", "pathlib", "typed", "layout"]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Developers",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
@@ -25,18 +25,18 @@ classifiers = [
 ]
 
 dependencies = [
-  "beartype>=0.23.0rc1",
+  "beartype>=0.19",
   "parse",
-  "plum-dispatch>=2.10.1",
+  "plum-dispatch>=2",
   "typing-extensions>=4.10",
 ]
 
 [project.optional-dependencies]
-mashumaro = ["mashumaro>=3.22"]
-orjson = ["mashumaro[orjson]>=3.22"]
-yaml = ["mashumaro[yaml]>=3.22"]
-toml = ["mashumaro[toml]>=3.22"]
-msgpack = ["mashumaro[msgpack]>=3.22"]
+mashumaro = ["mashumaro>=3.11"]
+orjson = ["mashumaro[orjson]>=3.11"]
+yaml = ["mashumaro[yaml]>=3.11"]
+toml = ["mashumaro[toml]>=3.11"]
+msgpack = ["mashumaro[msgpack]>=3.11"]
 
 [dependency-groups]
 dev = [
@@ -47,8 +47,8 @@ dev = [
   "coverage",
   "docopt", # docopt2 ? -ng ?
   "glom",
-  "httpx>=0.28.1",
-  "mashumaro[orjson]>=3.22",
+  "httpx",
+  "mashumaro[orjson]>=3.11",
   "packaging",
   "pre-commit",
   "pytest>=9",

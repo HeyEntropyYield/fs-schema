@@ -158,5 +158,19 @@ def _compile_field(name: str, spec: str, index: int) -> FormatField:
     return replace(_field_template(spec).value, name=name, index=index, pattern=spec)
 
 
+class Captures:
+    __slots__: Final = ("args", "kwargs")
+    args: tuple[FmtField, ...]
+    kwargs: dict[str, FmtField]
+
+    def __init__(self, args: tuple[FmtField, ...], kwargs: dict[str, FmtField]) -> None:
+        self.args = args
+        self.kwargs = kwargs
+
+
+def captures(*args: FmtField, **kwargs: FmtField) -> Captures:
+    return Captures(args, kwargs)
+
+
 def dt(pattern: str, name: str = "ts") -> FmtLike:
     return f"{{{name}:{pattern}}}"

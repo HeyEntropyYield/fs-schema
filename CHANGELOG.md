@@ -2,11 +2,26 @@
 
 API by git tag. Signatures: [reference](https://heyentropyyield.github.io/fs-schema/reference/).
 
-## Unreleased
+## v0.7.0
+
+One directory can carry several schemas. Links and tree copies are their own operations.
+
+- **Declare**
+  `Dir(".")`
+  [One directory, several schemas](https://heyentropyyield.github.io/fs-schema/reference/#one-directory-several-schemas)
+  - `Dir(".", alias=...)` checks another schema against this same directory. The attribute is that schema.
+  - An alias is required. `fmt` and `match` do not belong on this form.
+  - `optional=True` skips that schema when it does not match. The directory is still there.
 
 - **Write**
-  `link_to`, `copy_to`
-  [Reading and writing](https://heyentropyyield.github.io/fs-schema/reference/#reading-and-writing)
+  `parse`, `create`, `put`, `link_to`, `copy_to`
+  [Creating with schemas](https://heyentropyyield.github.io/fs-schema/reference/#creating-with-schemas)
+  - Path inputs are `PathIsh`, including a schema node. A string body is text. A path-like body is copied.
+  - `format(**captures)` then `create` writes one member. A list of `(captures, payload)` pairs writes many members in one `create`.
+    The left side is `captures(*args, **kwargs)`, or a dict of names. A dict is used as `captures`.
+    [quickstart](https://github.com/heyentropyyield/fs-schema/blob/master/examples/quickstart.py#L70-L79)
+    [several days](https://github.com/heyentropyyield/fs-schema/blob/master/examples/data_delivery_after.py#L147-L154)
+  - One bare `(captures, payload)` pair raises `TypeError`. Pass a list of pairs.
   - `link_to` replaces a path with a symlink. `hard=True` hardlinks that file's inode. A string target is a path. The symlink is not followed.
   - `copy_to` copies a file or directory onto a path, a path string, or a schema node.
     `clean=False` keeps names that exist only at the destination. `clean=True` removes the destination first.
@@ -22,12 +37,12 @@ API by git tag. Signatures: [reference](https://heyentropyyield.github.io/fs-sch
   `relative_to`, `create`, `root`, `format`, `parse`, `put`
   [Creating with schemas](https://heyentropyyield.github.io/fs-schema/reference/#creating-with-schemas)
   - `relative_to` fills paths. `create` writes that plan and does not check the tree.
-    [quickstart](https://github.com/heyentropyyield/fs-schema/blob/master/examples/quickstart.py#L68-L71)
+    [quickstart](https://github.com/heyentropyyield/fs-schema/blob/master/examples/quickstart.py#L70-L79)
   - `create` on a bound schema raises `TypeError`: `use root()`.
   - `dir.create()` makes that directory and required child directories. No files, no optional directories, no collection members.
   - `None` leaves an optional child absent. An unknown alias raises `KeyError`.
   - A collection takes a filename-to-body map, or a list of `(captures, payload)` pairs. Keys that are capture names are rejected.
-    [delivery](https://github.com/heyentropyyield/fs-schema/blob/master/examples/data_delivery_after.py#L140-L154)
+    [delivery](https://github.com/heyentropyyield/fs-schema/blob/master/examples/data_delivery_after.py#L147-L154)
   - A file collection whose captures were set by `format` takes the body alone. A directory collection does not.
     [one member](https://github.com/heyentropyyield/fs-schema/blob/master/examples/smoke.py#L30-L31)
   - A missing capture raises `TypeError` and names it. Two values for one capture raise `ValueError`.

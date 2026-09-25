@@ -4,26 +4,12 @@ Dev:
   ./run.sh pretty / check / tests
   ./run.sh docs:serve
 
-Maintainer:
-  ./run.sh pkg:bump VERSION
-  ./run.sh release:check
-  ./run.sh release:tag
-  ./run.sh gh:ci [ref]
-  ./run.sh gh:docs [ref]
-  ./run.sh gh:publish:testpypi [ref]
-  ./run.sh gh:publish:pypi
-  ./run.sh gh:release
-  ./run.sh release:testpypi
-  ./run.sh release:pypi
-
 Lock: edit pyproject.toml, then ./run.sh uv:lock
 MRE: ./run.sh docker:check / docker:test
 
 Commands:
   help                         Usual path + command list
   pkg:version                  Read or update the package version and lockfile
-  pkg:bump                     Update version, lockfile, & commit
-  pkg:build                    Build sdist and wheel into dist/
  Setup
   setup:install-pre-commit     Install git hooks (once per clone; sync first)
   setup:shellcheck             Install pinned shellcheck if not found
@@ -45,6 +31,8 @@ Commands:
   docs:build                   Build the docs site into site/
   docs:serve                   Serve docs locally
  CI / maintainer
+  pkg:bump                     Update version, lockfile, & commit
+  pkg:build                    Build sdist and wheel into dist/
   ci:tox                       Local tox matrix in parallel (one worker per CPU)
   release:check                Build, inspect, and clean-install both local artifacts
   release:tag                  Create annotated vVERSION tag at clean release HEAD

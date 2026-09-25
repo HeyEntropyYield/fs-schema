@@ -67,11 +67,15 @@ def curate(source: Path, target: Path) -> Curated | fss.MismatchErr:
     latest = delivery.batches.days[-1]
     fs = Curated.relative_to(target)
     parquet = convert_parts([part.path for part in latest.parts])
-    # One spec: exact files by alias, collection members as (captures, body) pairs.
+    # fmt: off
     fs.create(
         manifest=CuratedManifest(manifest.delivery_id, partitions=1),
-        days=[({"day": latest.kwargs.day}, {"parts": [({"part": 0}, parquet)]})],
+        days=[(
+            {"day": latest.kwargs.day},  # dict of format names
+            {"parts": [(fss.captures(part=0), parquet)]},  # same slot via captures
+        )],
     )
+    # fmt: on
     return fs.bind()
 
 

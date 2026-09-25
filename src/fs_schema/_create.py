@@ -7,7 +7,7 @@ from typing import TypeAlias, final
 from plum import dispatch
 from typing_extensions import TypeIs
 
-from ._fmt import FmtField
+from ._fmt import Captures, FmtField, captures
 from ._schema import (
     Defn,
     DirDefn,
@@ -27,7 +27,7 @@ from ._schema import (
 )
 from ._types import CreateTop, PathIsh, Puttable
 
-_Member: TypeAlias = tuple[Mapping[str, FmtField], CreateTop]
+_Member: TypeAlias = tuple[Mapping[str, FmtField] | Captures, CreateTop]
 
 
 @final
@@ -159,13 +159,14 @@ def _fill_collection(
         if not _is_member(item):
             raise TypeError(f"{key!r} member must be a (captures, payload) pair")
         fields, payload = item
-        validate_capture_names(defn, fields)
-        _write_formatted(defn, format_any(template, **fields), payload)  # pyright: ignore[reportArgumentType]
+        held = fields if isinstance(fields, Captures) else captures(**fields)
+        validate_capture_names(defn, held.kwargs)
+        _write_formatted(defn, format_any(template, *held.args, **held.kwargs), payload)  # pyright: ignore[reportArgumentType]
 
 
 def _is_member(item: object) -> TypeIs[_Member]:
     match item:
-        case (Mapping(), object()):
+        case (Mapping(), object()) | (Captures(), object()):
             return True
         case _:
             return False

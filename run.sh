@@ -43,18 +43,6 @@ Dev:
   ./run.sh pretty / check / tests
   ./run.sh docs:serve
 
-Maintainer:
-  ./run.sh pkg:bump VERSION
-  ./run.sh release:check
-  ./run.sh release:tag
-  ./run.sh gh:ci [ref]
-  ./run.sh gh:docs [ref]
-  ./run.sh gh:publish:testpypi [ref]
-  ./run.sh gh:publish:pypi
-  ./run.sh gh:release
-  ./run.sh release:testpypi
-  ./run.sh release:pypi
-
 Lock: edit pyproject.toml, then ./run.sh uv:lock
 MRE: ./run.sh docker:check / docker:test
 
@@ -73,21 +61,6 @@ EOF
 
 # @describe Read or update the package version and lockfile
 pkg:version(){ uv version "$@"; }
-
-# @describe Update version, lockfile, & commit
-# @arg version! PEP 440 package version
-pkg:bump(){
-  _require_clean || return $?
-  [ $# -eq 1 ] || { : "usage: ./run.sh pkg:bump VERSION"; return 2; }
-  uv version "$1" || return $?
-  git add pyproject.toml uv.lock || return $?
-  git commit -m "v$(uv version --short)" && return 0
-  printf 'fix errors and commit: git commit -m "v$(uv version --short)"\n'
-  return 1
-}
-
-# @describe Build sdist and wheel into dist/
-pkg:build(){ uv build --no-sources --clear "$@"; }
 
 main(){ pkg:version || return $?; help || return $?; echo -e '\nChain: `./run.sh fn1 arg1 @@ fn2 arg1`'; }
 
@@ -209,6 +182,21 @@ docs:serve(){
 docs:_deploy(){ _workflow_local docs.yml "$@" || return $?; }
 
 ## CI / maintainer
+
+# @describe Update version, lockfile, & commit
+# @arg version! PEP 440 package version
+pkg:bump(){
+  _require_clean || return $?
+  [ $# -eq 1 ] || { : "usage: ./run.sh pkg:bump VERSION"; return 2; }
+  uv version "$1" || return $?
+  git add pyproject.toml uv.lock || return $?
+  git commit -m "v$(uv version --short)" && return 0
+  printf 'fix errors and commit: git commit -m "v$(uv version --short)"\n'
+  return 1
+}
+
+# @describe Build sdist and wheel into dist/
+pkg:build(){ uv build --no-sources --clear "$@"; }
 
 # @describe Run test.yml locally via act (check -> build wheel -> test wheel -> coverage)
 # @arg rest~ extra act args

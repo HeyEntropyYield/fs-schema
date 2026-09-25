@@ -10,7 +10,7 @@ __version__ = _version("fs-schema")
 
 _beartype_this_package(conf=_BeartypeConf(strategy=_BeartypeStrategy.On))
 
-from ._fmt import dt as dt
+from ._fmt import captures as captures, dt as dt
 from ._ops import (
     MismatchErr as MismatchErr,
     exists_opt as exists_opt,

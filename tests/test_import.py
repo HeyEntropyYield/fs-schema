@@ -17,6 +17,7 @@ from fs_schema import (
     Schema,
     SchemaRoot,
     __version__,
+    captures,
     dt,
     exists_opt,
     is_mismatch,
@@ -38,6 +39,7 @@ def test_public_exports_are_explicit_end_user_api() -> None:
         "Schema": Schema,
         "SchemaRoot": SchemaRoot,
         "__version__": __version__,
+        "captures": captures,
         "dt": dt,
         "exists_opt": exists_opt,
         "is_mismatch": is_mismatch,
@@ -59,6 +61,7 @@ def test_private_runtime_names_are_not_reexported() -> None:
         "_LoadableFile",
         "_LoadableFileMatch",
         "_TemplateCollection",
+        "Captures",
         "FmtLike",
         "load",
     )
