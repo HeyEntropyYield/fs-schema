@@ -325,7 +325,7 @@ lookup for names such as `"items"` that collide with mapping methods.
 | `where(*args, **kwargs)` | Matches whose captures have the positional prefix and named subset |
 | `get(index=0, default=...)` | Safely indexed match, or the supplied default when out of range |
 | `format(*args, **kwargs)` | Planned fixed file or recursively navigable fixed directory (format-backed collections only) |
-| `parse(basename)` | Planned member whose basename already matches; `ValueError` when it does not |
+| `parse(source)` | Planned member. A basename, a path, or any `__fspath__` value. The name used is `Path(source).name` |
 
 A predicate receives the pair `(match.args, match.kwargs)`. Filtering returns a
 materialized result that keeps collection capabilities such as slicing and, for
@@ -414,7 +414,7 @@ dynamic static lookup loses that precision.
 
 A file argument is whatever `put` accepts. A directory argument names child aliases. Leave an optional child out, or pass `None`, and it stays absent. An unknown alias raises `KeyError`. `create()` with no arguments creates that directory and every required child directory. It does not write files, and it does not create optional directories or collection members.
 
-You do not `create` a collection as a whole. `format(**captures)` names one member. When that member is a directory, the captures are remembered by every template under it. `parse(basename)` names one member from a filename you already have, and does not remember captures. `create` on the member writes it. A basename that does not fit raises `ValueError` there, rather than later at `bind`.
+You do not `create` a collection as a whole. `format(**captures)` names one member. When that member is a directory, the captures are remembered by every template under it. `parse(source)` names one member from a basename, a path, or another schema node. `create` on the member writes it. A path-like body is copied. A string body is text, even when that string is the name of a file that exists. A basename that does not fit raises `ValueError` there, rather than later at `bind`.
 
 A list of members can go in the spec. Each item is a `(captures, payload)` pair: the captures are the `format` arguments, and the payload is what you would pass to `create` on that member. A mapping of filename to body writes those names as given. The keys are filenames. If a key is a capture name instead of a filename, the error says so.
 
@@ -467,7 +467,7 @@ custom_manifest = fss.File(
 )
 ```
 
-`put` writes one file and creates any missing parent directories. The finished contents replace the previous file in one step, so a reader sees either the old file or the new one. Pass `None`, or omit the body, and the file is empty. The body can be bytes, text, another file to copy, an object with `save`, or a dataclass stored as JSON. `save` is called on the file that then becomes the destination. Install `fs-schema[mashumaro]` for dataclass JSON, or `fs-schema[orjson]` to use its faster encoder. `load()` returns a decoding failure as a value. `raise_exn` raises that failure and keeps the success type.
+`put` writes one file and creates any missing parent directories. The finished contents replace the previous file in one step, so a reader sees either the old file or the new one. Pass `None`, or omit the body, and the file is empty. The body can be bytes, text, a path to copy, a schema node to copy, an object with `save`, or a dataclass stored as JSON. A string is always text. `Path("notes.txt")` copies that file; the string `"notes.txt"` writes the name, even when `notes.txt` is sitting in the same directory. `save` is called on the file that then becomes the destination. Install `fs-schema[mashumaro]` for dataclass JSON, or `fs-schema[orjson]` to use its faster encoder. `load()` returns a decoding failure as a value. `raise_exn` raises that failure and keeps the success type.
 
 ```text
 put(path, data=None) -> None

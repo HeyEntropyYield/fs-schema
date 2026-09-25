@@ -366,7 +366,7 @@ class FixedFile(_Fixed, Generic[_L_co]):
     def read_text(self) -> str:
         return self.path.read_text()
 
-    def create(self, data: Puttable | None = None) -> Self:
+    def create(self, data: Puttable | PathIsh | None = None) -> Self:
         put(self.path, data)
         return self
 
@@ -503,12 +503,13 @@ class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
             return typing.cast(_Default, default)
 
     @overload
-    def parse(self: "Matches[_FileMatch[_L], File[_L]]", basename: str) -> FixedFile[_L]: ...
+    def parse(self: "Matches[_FileMatch[_L], File[_L]]", source: PathIsh) -> FixedFile[_L]: ...
 
     @overload
-    def parse(self: "Matches[_DirMatch, DirDefn]", basename: str) -> "FixedDir": ...
+    def parse(self: "Matches[_DirMatch, DirDefn]", source: PathIsh) -> "FixedDir": ...
 
-    def parse(self, basename: str) -> "FixedFile[object] | FixedDir":
+    def parse(self, source: PathIsh) -> "FixedFile[object] | FixedDir":
+        basename = Path(source).name
         if not is_safe_basename(basename) or defn_node(self.defn).select(basename) is None:
             raise ValueError(f"member {basename!r} does not match")
         return plan_fixed(self.path / basename, self.defn)

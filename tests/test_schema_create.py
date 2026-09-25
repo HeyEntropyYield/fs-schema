@@ -116,6 +116,10 @@ class _Pics(Schema):
     schema = {"images": File(fmt="{stem}.{ext}", match=r".+\.png")}
 
 
+class _Holder(Schema):
+    schema = {"note": {"body": "body.txt"}}
+
+
 def test_create_mkdirs_required_directories_only(tmp_path: Path) -> None:
     _Tree.relative_to(tmp_path).create()
     assert (tmp_path / "bucket" / "inner").is_dir()
@@ -151,6 +155,19 @@ def test_create_fills_collections_from_pairs_and_basenames(tmp_path: Path) -> No
         pics.images.parse("nope")
     _ = pics.images.parse("b.png").create(b"z")
     assert (tmp_path / "pics" / "b.png").read_bytes() == b"z"
+    src = tmp_path / "from" / "c.png"
+    src.parent.mkdir()
+    src.write_bytes(b"from-file")
+    copied = _Pics.bind(src.parent)
+    assert type(copied) is _Pics
+    _ = pics.images.parse(copied.images[0]).create(copied.images[0])
+    assert (tmp_path / "pics" / "c.png").read_bytes() == b"from-file"
+    nest = tmp_path / "nest"
+    _Pics.relative_to(nest).create(images={"c.png": copied.images[0]})
+    assert (nest / "c.png").read_bytes() == b"from-file"
+    holder = _Holder.relative_to(tmp_path / "holder")
+    holder.create(note={"body": copied.images[0]})
+    assert (tmp_path / "holder" / "note" / "body.txt").read_bytes() == b"from-file"
 
 
 class _Shelf(Schema):

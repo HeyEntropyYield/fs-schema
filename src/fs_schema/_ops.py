@@ -40,7 +40,7 @@ def exists_opt(path: PathIsh | None) -> Path | None:
     return candidate if candidate.exists() else None
 
 
-def put(path: PathIsh, data: Puttable | None = None) -> None:
+def put(path: PathIsh, data: Puttable | PathIsh | None = None) -> None:
     target = Path(path)
     _commit(target, lambda temporary: _write_puttable(temporary, data))
 
@@ -58,7 +58,7 @@ def _commit(target: Path, write: Callable[[Path], None]) -> None:
         raise
 
 
-def _write_puttable(target: Path, data: Puttable | None) -> None:
+def _write_puttable(target: Path, data: Puttable | PathIsh | None) -> None:
     match data:
         case None:
             _ = target.write_bytes(b"")
@@ -66,17 +66,20 @@ def _write_puttable(target: Path, data: Puttable | None) -> None:
             _ = target.write_bytes(data)
         case str():
             _ = target.write_text(data)
-        case Path():
-            _ = copyfile(data, target)
         case HasSave():
             data.save(target)
         case DataclassInstance():
             encoded = encode_json(target, data)
-            if isinstance(encoded, bytes):
-                _ = target.write_bytes(encoded)
-            else:
-                _ = target.write_text(encoded)
-        case _:  # pragma: no cover - closed-union defense
+            match encoded:
+                case bytes():
+                    _ = target.write_bytes(encoded)
+                case str():
+                    _ = target.write_text(encoded)
+                case _:
+                    assert_never(encoded)
+        case os.PathLike():
+            _ = copyfile(Path(data), target)
+        case _:
             assert_never(data)
 
 

@@ -82,6 +82,15 @@ def test_put_covers_supported_bodies_and_dataclass_without_codec(
     assert empty.is_file() and empty.read_bytes() == b""
 
 
+def test_put_string_writes_the_name_not_the_local_file(tmp_path: Path) -> None:
+    source = tmp_path / "local.txt"
+    _ = source.write_text("inside")
+    dest = tmp_path / "out.txt"
+    _ops.put(dest, source.name)
+    assert dest.read_text() == "local.txt"
+    assert dest.read_text() != source.read_text()
+
+
 def test_load_returns_values_and_caught_exceptions(tmp_path: Path) -> None:
     path = tmp_path / "value.txt"
     _ = path.write_text("3")

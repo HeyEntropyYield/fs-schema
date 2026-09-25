@@ -34,7 +34,7 @@ Puttable: TypeAlias = FileBody | HasSave | DataclassInstance
 CreateValue: TypeAlias = (
     Puttable | Mapping[str, "CreateValue"] | Sequence[tuple[Mapping[str, FmtField], "CreateValue"]] | None
 )
-CreateTop: TypeAlias = Puttable | Mapping[str, object] | Sequence[object] | None
+CreateTop: TypeAlias = Puttable | PathIsh | Mapping[str, object] | Sequence[object] | None
 
 # A class is resolved through the target file's format codec. With the
 # mashumaro extra, plain dataclasses work without mixins. A callable is an

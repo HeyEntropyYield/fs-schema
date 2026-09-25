@@ -1,4 +1,5 @@
 # pyright: reportImportCycles=false
+import os
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TypeAlias, final
@@ -24,7 +25,7 @@ from ._schema import (
     validate_capture_names,
     write_plan,
 )
-from ._types import CreateTop, Puttable
+from ._types import CreateTop, PathIsh, Puttable
 
 _Member: TypeAlias = tuple[Mapping[str, FmtField], CreateTop]
 
@@ -80,10 +81,6 @@ def _is_required_exact_dir(defn: Defn) -> bool:
     return not isinstance(defn, File) and bool(node.name) and node.min >= 1
 
 
-def _is_puttable(value: object) -> TypeIs[Puttable]:
-    return isinstance(value, Puttable)
-
-
 def _is_basename_map(value: object) -> TypeIs[Mapping[str, CreateTop]]:
     return isinstance(value, Mapping)
 
@@ -103,7 +100,7 @@ def _write_child(directory: FixedDir, defn: Defn, key: str, value: CreateTop) ->
 
 
 @dispatch
-def _write_exact(defn: File, child: FixedFile, value: Puttable | None) -> None:  # pyright: ignore[reportRedeclaration]
+def _write_exact(defn: File, child: FixedFile, value: Puttable | PathIsh | None) -> None:  # pyright: ignore[reportRedeclaration]
     _ = child.create(value)
 
 
@@ -116,8 +113,11 @@ def _dispatch_collection(template: Matches[Match, Defn], defn: Defn, key: str, v
     if _is_basename_map(value):
         _fill_named(template, defn, key, value)
         return
-    if isinstance(defn, File) and _is_puttable(value):
+    if isinstance(defn, File) and isinstance(value, Puttable):
         _fill_stamped_file(template, defn, key, value)
+        return
+    if isinstance(defn, File) and isinstance(value, os.PathLike):
+        _fill_stamped_file(template, defn, key, Path(value))
         return
     if _is_member_seq(value):
         if defn_node(defn).fmt is None:
@@ -185,7 +185,7 @@ def _fill_named(
 
 
 @dispatch
-def _write_formatted(defn: File, created: FixedFile, payload: Puttable | None) -> None:  # pyright: ignore[reportRedeclaration]
+def _write_formatted(defn: File, created: FixedFile, payload: Puttable | PathIsh | None) -> None:  # pyright: ignore[reportRedeclaration]
     _ = created.create(payload)
 
 
