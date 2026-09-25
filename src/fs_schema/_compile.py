@@ -40,8 +40,14 @@ def _invalid_schema(class_name: str, detail: str) -> TypeError:
     return TypeError(f"{class_name}.schema {detail}")
 
 
+def _is_dot_dir(node: Node, *, alias: bool) -> bool:
+    return isinstance(node, Dir) and node.name == "." and bool(node.alias) is alias
+
+
 def _validate_schema_node(class_name: str, key: object, node: Node) -> None:
-    if node.name and not is_safe_basename(node.name):
+    if _is_dot_dir(node, alias=False):
+        raise _invalid_schema(class_name, f"declaration {key!r} Dir('.') requires alias")
+    if node.name and not is_safe_basename(node.name) and not _is_dot_dir(node, alias=True):
         raise _invalid_schema(class_name, f"declaration {key!r} name must be a basename")
     if node.alias and (not node.alias.isidentifier() or keyword.iskeyword(node.alias) or node.alias.startswith("_")):
         raise _invalid_schema(class_name, f"declaration {key!r} alias must be a public identifier")

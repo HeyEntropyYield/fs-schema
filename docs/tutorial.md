@@ -322,6 +322,8 @@ def ingest(
 are explicit transitions rather than conventions attached to four `Path`
 values.
 
+To check several schemas against one directory, and keep each schema as itself, use `Dir(".", alias=...)`. [One directory, several schemas](reference.md#one-directory-several-schemas).
+
 ## glom
 glom can read a deep directory, file, and/or file contents path, or return default, heavily reducing existence checking code.
 

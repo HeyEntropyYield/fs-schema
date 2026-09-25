@@ -267,24 +267,28 @@ class DirDefn:
         lookup: dict[str, int] = {}
         identities: dict[str, int] = {}
 
-        def add(target: dict[str, int], key: str, index: int) -> None:
+        def add_uniq(target: dict[str, int], key: str, index: int) -> None:
             if key in target and target[key] != index:
                 raise ValueError(f"duplicate child key: {key!r}")
             target[key] = index
 
         for index, child_defn in enumerate(child_defns):
             node = defn_node(child_defn)
+            if node.name == ".":
+                if not node.alias:
+                    raise ValueError("Dir('.') requires alias")
+                add_uniq(identities, node.alias, index)
+                add_uniq(lookup, node.alias, index)
+                continue
             for identity in dict.fromkeys(
-                key
-                for key in (node.alias, node.name, normalize_name(node.name) if node.name else None, node.fmt)
-                if key
+                key for key in (node.alias, node.name, normalize_name(node.name), node.fmt) if key
             ):
-                add(identities, identity, index)
+                add_uniq(identities, identity, index)
             if node.name:
-                add(lookup, node.name, index)
-                add(lookup, normalize_name(node.name), index)
+                add_uniq(lookup, node.name, index)
+                add_uniq(lookup, normalize_name(node.name), index)
             if node.alias:
-                add(lookup, node.alias, index)
+                add_uniq(lookup, node.alias, index)
         object.__setattr__(self, "defn", defn)
         object.__setattr__(self, "defns", child_defns)
         object.__setattr__(self, "lookup", MappingProxyType(lookup))
@@ -746,6 +750,8 @@ def is_safe_basename(name: str) -> bool:
 
 
 def _validate_node(node: Node) -> tuple[Selector, int | None]:
+    if node.name == "." and node.match:
+        raise ValueError("Dir('.') cannot take match")
     if not any((node.name, node.fmt, node.match)):
         raise ValueError("declaration requires name, fmt, or match")
     if node.name and node.fmt is not None:
@@ -815,14 +821,17 @@ def _bind_dir_defn(path: Path, position: int, defn: Defn, cache: FsCache) -> Bou
     node = defn_node(defn)
     if node.name:
         target = path / node.name
-        if node.min == 0 and not target.exists():
+        if node.min == 0 and node.name != "." and not target.exists():
             return None
         if node.select(target.name) is None:
             return MismatchErr(f"fixed basename does not match {node.match!r}: {target}")
         if not _is_kind(target, defn):
             kind = "file" if isinstance(defn, File) else "directory"
             return MismatchErr(f"expected {kind}: {target}")
-        return _bind_fixed(target, defn, cache)
+        bound = _bind_fixed(target, defn, cache)
+        if node.name == "." and node.min == 0 and is_mismatch(bound):
+            return None
+        return bound
 
     listing = _listing(path, cache)
     if is_mismatch(matches := _bind_matches(defn, listing, cache)):

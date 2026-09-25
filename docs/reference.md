@@ -118,6 +118,34 @@ Alias, name, or `fmt` collision fails at class creation.
 Matching keys replace the inherited node.
 Anonymous match-only decls append.
 
+### One directory, several schemas
+
+A schema has one base. There is no multiple inheritance.
+
+`Dir(".", alias=...)` checks another schema against this same directory. The attribute is that schema. The parent is not.
+
+Use this when one directory is several results, or several stages, and each result should stay its own type. A subclass adds another `Dir(".")`.
+
+`optional=True` skips that schema when it does not match. The directory is still there.
+
+```python
+class Notes(fss.Schema):
+    schema = {"body": "body.txt"}
+
+
+class Metrics(fss.Schema):
+    schema = {"score": "score.json"}
+
+
+class Work(fss.Schema):
+    schema = {
+        fss.Dir(".", alias="notes"): Notes,
+        fss.Dir(".", alias="metrics"): Metrics,
+    }
+```
+
+`work.notes` is a `Notes`. Pass that where a `Notes` is required. `fmt` and `match` do not belong on this form. An alias is required.
+
 ### Declaration API
 
 Exact basename:
@@ -131,6 +159,14 @@ File(
     optional: bool = False,
     schema: type[T] | Callable[[Path], T] | None = None,
 ) -> File[T]
+
+Dir(
+    ".",
+    *,
+    alias: str,
+    optional: bool = False,
+    schema: type[S] | None = None,
+) -> Dir[S]
 
 Dir(
     name: str,
