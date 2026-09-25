@@ -29,6 +29,8 @@ from typing_extensions import (
 
 from ._fmt import CaptureField, CaptureMap, FmtField, FmtLike, ParsedCaptures
 from ._ops import MismatchErr, is_mismatch, load, put
+from ._ops import copy_to as copy_path
+from ._ops import link_to as link_path
 from ._selector import Selector
 from ._std_ext import CacheSeq
 from ._types import CreateTop, CreateValue, LoadSpec, Located, PathIsh, Puttable
@@ -339,6 +341,12 @@ class _Fixed:
 
     def exists(self) -> bool:
         return self.path.exists()
+
+    def link_to(self, target: PathIsh, *, hard: bool = False) -> None:
+        link_path(self.path, target, hard=hard)
+
+    def copy_to(self, dest: PathIsh, *, follow_symlinks: bool = True, clean: bool = False) -> None:
+        copy_path(self.path, dest, follow_symlinks=follow_symlinks, clean=clean)
 
     def __bool__(self) -> typing.Literal[True]:
         return True

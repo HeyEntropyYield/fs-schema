@@ -251,3 +251,29 @@ def test_stamp_failure_modes(tmp_path: Path) -> None:
     for body in ("nope", b"nope", tmp_path):
         with pytest.raises(TypeError, match="is a collection"):
             _Shelf.relative_to(tmp_path / "plain").create(days=body)
+
+
+def test_schema_link_to_and_copy_to(tmp_path: Path) -> None:
+    class Shot(Schema):
+        schema = {"frame": "frame.png"}
+
+    class Roll(Schema):
+        schema = {Dir(alias="shots", fmt="{name}", min=0): Shot}
+
+    real = tmp_path / "real.png"
+    _ = real.write_bytes(b"png")
+    roll = Roll.relative_to(tmp_path / "roll")
+    frame = roll.shots.parse("a").frame
+    frame.link_to(real)
+    assert frame.path.is_symlink()
+    assert frame.path.readlink() == real
+    bound = Roll.bind(tmp_path / "roll")
+    assert isinstance(bound, Roll)
+    publish = Roll.relative_to(tmp_path / "publish")
+    bound.copy_to(publish, clean=True)
+    copied = publish.shots.parse("a").frame.path
+    assert copied.is_file() and not copied.is_symlink()
+    assert copied.read_bytes() == b"png"
+    shot = bound.shots.parse("a")
+    shot.copy_to(tmp_path / "one-shot", clean=True)
+    assert (tmp_path / "one-shot" / "frame.png").read_bytes() == b"png"

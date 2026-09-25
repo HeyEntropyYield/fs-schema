@@ -16,6 +16,8 @@ from ._ops import (
     exists_opt as exists_opt,
     is_mismatch as is_mismatch,
     put as put,
+    link_to as link_to,
+    copy_to as copy_to,
     raise_exn as raise_exn,
     raise_mismatch as raise_mismatch,
 )

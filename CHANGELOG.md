@@ -2,6 +2,18 @@
 
 API by git tag. Signatures: [reference](https://heyentropyyield.github.io/fs-schema/reference/).
 
+## Unreleased
+
+- **Write**
+  `link_to`, `copy_to`
+  [Reading and writing](https://heyentropyyield.github.io/fs-schema/reference/#reading-and-writing)
+  - `link_to` replaces a path with a symlink. `hard=True` hardlinks that file's inode. A string target is a path. The symlink is not followed.
+  - `copy_to` copies a file or directory onto a path, a path string, or a schema node.
+    `clean=False` keeps names that exist only at the destination. `clean=True` removes the destination first.
+    The same path, or one path inside the other, raises `ValueError`.
+    A symlink at the destination is replaced. The copy does not write through it.
+    [camera roll](https://github.com/heyentropyyield/fs-schema/blob/master/examples/symlink_copy.py)
+
 ## v0.6.0
 
 `create` writes a plan. Nested directory overrides merge. `exists_opt(None)` is `None`.

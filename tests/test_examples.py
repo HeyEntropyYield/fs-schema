@@ -4,6 +4,7 @@ import data_delivery_after
 import data_delivery_before
 import quickstart
 import smoke
+import symlink_copy
 
 
 def test_examples_import() -> None:
@@ -11,3 +12,4 @@ def test_examples_import() -> None:
     assert data_delivery_before.pull
     assert data_delivery_after.DownloadedDelivery
     smoke.main()
+    symlink_copy.main()

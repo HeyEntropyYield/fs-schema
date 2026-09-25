@@ -2,7 +2,7 @@ import os
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
-from shutil import copyfile
+from shutil import copyfile, copytree, rmtree
 from typing import Literal, TypeVar, cast
 
 from typing_extensions import TypeIs, assert_never
@@ -45,6 +45,46 @@ def put(path: PathIsh, data: Puttable | PathIsh | None = None) -> None:
     _commit(target, lambda temporary: _write_puttable(temporary, data))
 
 
+def link_to(path: PathIsh, target: PathIsh, *, hard: bool = False) -> None:
+    _commit(Path(path), lambda temporary: _link(temporary, target, hard=hard))
+
+
+def copy_to(
+    source: PathIsh,
+    dest: PathIsh,
+    *,
+    follow_symlinks: bool = True,
+    clean: bool = False,
+) -> None:
+    src = Path(source)
+    target = Path(dest)
+    if _overlaps(src, target):
+        raise ValueError(f"refusing to copy onto itself: {target}")
+    if clean and (target.exists() or target.is_symlink()):
+        if target.is_dir() and not target.is_symlink():
+            rmtree(target)
+        else:
+            target.unlink()
+    # A symlink at dest is the path being replaced. Do not write through it.
+    if target.is_symlink():
+        target.unlink()
+    if src.is_dir() and not src.is_symlink():
+        _ = copytree(src, target, symlinks=not follow_symlinks, dirs_exist_ok=not clean)
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if follow_symlinks or not src.is_symlink():
+        _ = copyfile(src, target)
+        return
+    if target.exists() or target.is_symlink():
+        target.unlink()
+    os.symlink(src.readlink(), target)
+
+
+def _overlaps(source: Path, dest: Path) -> bool:
+    src, dst = source.resolve(), dest.resolve()
+    return src == dst or src in dst.parents or dst in src.parents
+
+
 def _commit(target: Path, write: Callable[[Path], None]) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     descriptor, name = tempfile.mkstemp(dir=target.parent, prefix=".", suffix=target.suffix)
@@ -81,6 +121,15 @@ def _write_puttable(target: Path, data: Puttable | PathIsh | None) -> None:
             _ = copyfile(Path(data), target)
         case _:
             assert_never(data)
+
+
+def _link(temporary: Path, source: PathIsh, *, hard: bool) -> None:
+    temporary.unlink()
+    match hard:
+        case True:
+            os.link(source, temporary)
+        case False:
+            os.symlink(source, temporary)
 
 
 def load(path: PathIsh, decoder: LoadSpec[LoadT]) -> LoadT | Exception:

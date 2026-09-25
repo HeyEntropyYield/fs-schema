@@ -18,7 +18,7 @@ import fs_schema as fss
 | Declarations | `File`, `Dir`, `FILES`, `dt` |
 | Paths and matches | `Located`, `Match`, `exists_opt` |
 | Result helpers | `MismatchErr`, `is_mismatch`, `raise_mismatch`, `raise_exn` |
-| Writing | `put`, `create` |
+| Writing | `put`, `link_to`, `copy_to`, `create` |
 | Package metadata | `__version__` |
 
 All names in this table are available from `fs_schema`.
@@ -489,5 +489,45 @@ Install `fs-schema[orjson]` for a faster JSON encoder.
 
 ```text
 put(path, data=None) -> None
+link_to(path, target, *, hard=False) -> None
+copy_to(source, dest, *, follow_symlinks=True, clean=False) -> None
 raise_exn(value: T | Exception) -> T
 ```
+
+`link_to` replaces the path with a link to `target`.
+`hard=False` is a symlink and is not followed, so a link to a link stays pointed at that link.
+`hard=True` is a hard link to the file inode. `os.link` raises `OSError` across filesystems.
+A string target is a path.
+The same atomic replace as `put`.
+
+`copy_to` copies a file or directory onto another path.
+Source and destination are paths, path strings, or schema nodes.
+`follow_symlinks=True` writes regular files.
+`follow_symlinks=False` keeps links.
+`clean=False` copies onto what is already there. Extra names at the destination stay.
+`clean=True` removes the destination first.
+The same path, or one path inside the other, raises `ValueError`.
+
+```text
+node.link_to(target, *, hard=False) -> None
+node.copy_to(dest, *, follow_symlinks=True, clean=False) -> None
+```
+
+```python
+class Album(fss.Schema):
+    schema = {"images": fss.File(fmt="{stem}.png", min=0)}
+
+
+album = Album.relative_to(Path("album"))
+album.images.parse("a.png").link_to(Path("camera/a.png"))
+album.images.parse("a.png").link_to(Path("camera/a.png"), hard=True)
+bound = fss.raise_mismatch(Album.bind(Path("album")))
+publish = Album.relative_to(Path("publish"))
+bound.copy_to(publish)
+bound.copy_to(publish, follow_symlinks=False)
+bound.copy_to(publish, clean=True)
+fss.link_to("album/b.png", "camera/b.png")
+fss.copy_to(bound, publish)
+```
+
+`examples/symlink_copy.py` links each frame, then publishes that tree as regular files.
