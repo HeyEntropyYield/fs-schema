@@ -15,6 +15,7 @@ from fs_schema._schema import (
     FixedDir,
     FixedFile,
     Matches,
+    Schema,
     Template,
     _DirMatch,
     _FileMatch,
@@ -141,6 +142,32 @@ def test_collection_queries_preserve_shape_order_and_capture_semantics(tmp_path:
     assert collection.get(30, distinct_missing_default) is distinct_missing_default
     assert collection.get(default=marker) is first
     assert planned.get(default=marker) is marker
+
+
+def test_directory_iteration_covers_schema_root_and_bound_dir(tmp_path: Path) -> None:
+    class Box(Schema):
+        schema = {"note": "note.txt", "more": "more.txt"}
+
+    (tmp_path / "note.txt").write_text("a")
+    (tmp_path / "more.txt").write_text("b")
+    bound = Box.bind(tmp_path)
+    assert isinstance(bound, Box)
+    planned = Box.relative_to(tmp_path)
+    assert [child.name for child in bound] == ["note.txt", "more.txt"]
+    assert [child.name for child in planned] == ["note.txt", "more.txt"]
+    assert next(bound, None) is bound.note
+    assert [child.name for child in bound[:1]] == ["note.txt"]
+
+
+def test_next_on_a_collection_is_the_first_match(tmp_path: Path) -> None:
+    defn = File(fmt="part-{part:d}.txt", min=0)
+    first = _FileMatch(tmp_path / "part-1.txt", ParsedCaptures((), CaptureMap({"part": 1})), defn)
+    second = _FileMatch(tmp_path / "part-2.txt", ParsedCaptures((), CaptureMap({"part": 2})), defn)
+    node = Template(tmp_path, (first, second), defn)
+    empty = Template(tmp_path, (), defn)
+    assert next(empty, None) is None
+    assert next(node, None) is first
+    assert tuple(node) == (first, second)
 
 
 def test_where_none_is_a_positional_wildcard(tmp_path: Path) -> None:

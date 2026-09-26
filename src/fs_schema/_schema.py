@@ -75,7 +75,8 @@ class Match(Located, Protocol):
     def kwargs(self) -> CaptureMap: ...
 
 
-SortKey: TypeAlias = str | int | float | datetime | Located
+# None: a regex capture can be absent. A format field cannot. list.sort still rejects mixed None.
+SortKey: TypeAlias = str | int | float | datetime | Located | None
 SortFn: TypeAlias = Callable[[Match], SortKey]
 
 
@@ -445,7 +446,6 @@ class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
     path: Path
     _matches: tuple[_M_co, ...]
     defn: _Defn_co
-
     stamps: dict[str, FmtField]
 
     def __init__(
@@ -510,6 +510,13 @@ class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
                 return None
             return typing.cast(_Default, default)
 
+    @override
+    def __iter__(self) -> Iterator[_M_co]:
+        yield from self._matches
+
+    def __next__(self) -> _M_co:
+        return next(iter(self))
+
     @overload
     def parse(self: "Matches[_FileMatch[_L], File[_L]]", source: PathIsh) -> FixedFile[_L]: ...
 
@@ -535,10 +542,85 @@ class Template(Matches[_M_co, _Defn_co], Generic[_M_co, _Defn_co]):
 
 
 if TYPE_CHECKING:
+
+    class _ChildView(Protocol):
+        """Static view of a child. Not every runtime object has every method."""
+
+        path: Path  # FixedFile, FixedDir, _FileMatch, _DirMatch
+        name: str  # FixedFile, FixedDir, _FileMatch, _DirMatch
+        stem: str  # FixedFile, FixedDir, _FileMatch, _DirMatch
+        suffix: str  # FixedFile, FixedDir, _FileMatch, _DirMatch
+
+        @property
+        def args(self) -> tuple[CaptureField, ...]: ...  # _FileMatch, _DirMatch
+
+        @property
+        def kwargs(self) -> CaptureMap: ...  # _FileMatch, _DirMatch
+
+        def __bool__(self) -> bool: ...  # FixedFile, FixedDir, _FileMatch, _DirMatch
+
+        def __contains__(self, value: object) -> bool: ...  # Matches, Template
+
+        def __fspath__(self) -> str: ...  # FixedFile, FixedDir, _FileMatch, _DirMatch
+
+        def __getattr__(self, name: str) -> "_ChildView": ...  # FixedDir, _DirMatch
+
+        def __getitem__(self, index: int | str) -> "_ChildView": ...  # FixedDir, Matches, Template, _DirMatch
+
+        def __iter__(self) -> Iterator["_ChildView"]: ...  # FixedDir, Matches, Template, _DirMatch
+
+        def __len__(self) -> int: ...  # FixedDir, Matches, Template, _DirMatch
+
+        def __lt__(self, other: object) -> bool: ...  # FixedFile, FixedDir, Matches, Template, _FileMatch, _DirMatch
+
+        def __next__(self) -> "_ChildView": ...  # FixedDir, Matches, Template, _DirMatch
+
+        def __reversed__(self) -> Iterator["_ChildView"]: ...  # Matches, Template
+
+        @override
+        def __str__(self) -> str: ...  # FixedFile, FixedDir, Matches, Template, _FileMatch, _DirMatch
+
+        def copy_to(
+            self, dest: PathIsh, *, follow_symlinks: bool = True, clean: bool = False
+        ) -> None: ...  # FixedFile, FixedDir, _FileMatch, _DirMatch
+
+        def count(self, value: object) -> int: ...  # Matches, Template
+
+        def create(
+            self, data: Puttable | PathIsh | None = None, /, **children: CreateTop
+        ) -> "_ChildView": ...  # FixedFile, FixedDir, _FileMatch, _DirMatch
+
+        def exists(self) -> bool: ...  # FixedFile, FixedDir, _FileMatch, _DirMatch
+
+        def filter(self, predicate: CapturePredicate, /) -> "_ChildView": ...  # Matches, Template
+
+        def find(self, predicate: CapturePredicate, /) -> "_ChildView | None": ...  # Matches, Template
+
+        def format(self, *args: FmtField, **kwargs: FmtField) -> "_ChildView": ...  # Template
+
+        def get(self, index: int = 0) -> "_ChildView | None": ...  # Matches, Template
+
+        def index(self, value: object, start: int = 0, stop: int | None = None) -> int: ...  # Matches, Template
+
+        def link_to(
+            self, target: PathIsh, *, hard: bool = False
+        ) -> None: ...  # FixedFile, FixedDir, _FileMatch, _DirMatch
+
+        def load(self) -> object | Exception: ...  # FixedFile, _FileMatch
+
+        def parse(self, source: PathIsh) -> "_ChildView": ...  # Matches, Template
+
+        def read_bytes(self) -> bytes: ...  # FixedFile, _FileMatch
+
+        def read_text(self) -> str: ...  # FixedFile, _FileMatch
+
+        def where(self, *args: CaptureField, **kwargs: CaptureField) -> "_ChildView": ...  # Matches, Template
+
     Child: TypeAlias = "FixedFile[object] | FixedDir | Matches[_FileMatch[object] | _DirMatch]"
     # LUB of mixed slots. Optional exact may be None; required/collection never.
     BoundChild: TypeAlias = "Child | None"
-    GetChild: TypeAlias = Child
+    # Checker sees one view. Runtime stays Child | None so a missing optional is None.
+    GetChild: TypeAlias = _ChildView
 else:
     Child: TypeAlias = typing.Union[  # noqa: UP007
         FixedFile[object],
@@ -579,6 +661,9 @@ class FixedDir(_Fixed):
     def __iter__(self) -> Iterator[GetChild]:
         return iter(typing.cast(tuple[GetChild, ...], typing.cast(object, self._children)))
 
+    def __next__(self) -> GetChild:
+        return next(iter(self))
+
     def __len__(self) -> int:
         return len(self._children)
 
@@ -588,9 +673,15 @@ class FixedDir(_Fixed):
     @overload
     def __getitem__(self, index: str) -> GetChild: ...
 
-    def __getitem__(self, index: int | str) -> GetChild:
-        child = self._children[self._lookup[index]] if isinstance(index, str) else self._children[index]
-        return typing.cast(GetChild, typing.cast(object, child))
+    @overload
+    def __getitem__(self, index: slice) -> tuple[GetChild, ...]: ...
+
+    def __getitem__(self, index: int | str | slice) -> GetChild | tuple[GetChild, ...]:
+        if isinstance(index, str):
+            child = self._children[self._lookup[index]]
+            return typing.cast(GetChild, typing.cast(object, child))
+        got = self._children[index]
+        return typing.cast(GetChild | tuple[GetChild, ...], typing.cast(object, got))
 
     def __getattr__(self, name: str) -> GetChild:
         try:
@@ -980,8 +1071,14 @@ class SchemaCls(type):
         name: str,
         bases: tuple[type[object], ...],
         namespace: dict[str, object],
+        *,
+        schema: Mapping[object, object] | None = None,
         **kwargs: object,
     ) -> "SchemaCls":
+        if schema is not None:
+            if "schema" in namespace:
+                raise TypeError(f"{name} cannot set schema twice")
+            namespace["schema"] = schema
         if namespace.get(_BOUND_MATCH) or "Schema" not in globals():
             return super().__new__(metacls, name, bases, namespace, **kwargs)
         from ._compile import validate_schema_bases

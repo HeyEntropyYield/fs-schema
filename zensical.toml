@@ -18,6 +18,7 @@ watch = [
 nav = [
   { Home = "index.md" },
   { "API reference" = "reference.md" },
+  { Typechecking = "typechecking.md" },
   { Tutorial = "tutorial.md" },
   { Integrations = "integrations.md" },
   { Changelog = "changelog.md" },

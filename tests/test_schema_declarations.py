@@ -34,6 +34,21 @@ def test_name_and_match_are_valid_while_name_and_fmt_are_not() -> None:
     assert _schema.File(fmt="{value}", match=r".+").match == r".+"
 
 
+def test_schema_keyword_is_the_schema_dict(tmp_path: Path) -> None:
+    class Box(_schema.Schema, schema={"end2end": "end2end.onnx"}):
+        pass
+
+    (tmp_path / "end2end.onnx").write_bytes(b"x")
+    bound = Box.bind(tmp_path)
+    assert isinstance(bound, Box)
+    assert bound.end2end.path.name == "end2end.onnx"
+
+    with pytest.raises(TypeError, match="cannot set schema twice"):
+
+        class Both(_schema.Schema, schema={"a": "a.txt"}):  # pyright: ignore[reportUnusedClass]
+            schema = {"b": "b.txt"}
+
+
 def test_files_is_the_single_identity_token() -> None:
     assert fs_schema.FILES is _schema.FILES
     assert repr(_schema.FILES) == "FILES"
@@ -115,8 +130,8 @@ def test_skip_mismatch_drops_failed_file_matches_and_bad_directories(tmp_path: P
     skipped_dirs = DatedSkip.bind(root)
     assert type(skipped_dirs) is DatedSkip
     hits = skipped_dirs.days
-    assert len(hits) == 1  # pyright: ignore[reportArgumentType]
-    assert hits[0].name == "20260102"  # pyright: ignore[reportIndexIssue, reportUnknownMemberType, reportAttributeAccessIssue]
+    assert len(hits) == 1
+    assert hits[0].name == "20260102"
 
 
 def test_exact_name_rejects_collection_only_flags() -> None:

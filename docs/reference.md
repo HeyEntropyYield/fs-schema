@@ -29,6 +29,17 @@ Subclass `Schema`. Put the layout in `schema`.
 Nested mapping = nested directory.
 One Schema base. No methods, mixins, or extra metaclasses.
 
+The same name works on the class line.
+Use that when a type checker warns that the body assignment needs an annotation.
+Do not set both.
+
+```python
+class Batch(fss.Schema, schema={
+    "parts": fss.File(fmt="part-{part:d}.parquet"),
+}):
+    pass
+```
+
 ```python
 @dataclass
 class Manifest:
@@ -280,6 +291,10 @@ have `exists()`. Fixed files add `read_bytes()`, `read_text()`, and `create()`.
 Children support attribute access and exact item lookup. An explicit alias is
 used unchanged. Otherwise, each run outside `[A-Za-z0-9_]` in the disk name
 becomes `_`.
+
+A directory, schema, root, or bound directory iterates its children.
+A collection iterates its matches.
+`for` and comprehensions use that.
 
 ```python
 log_file = delivery.transfer.download_log

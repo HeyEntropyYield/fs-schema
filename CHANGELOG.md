@@ -12,6 +12,12 @@ One directory can carry several schemas. Links and tree copies are their own ope
   - `Dir(".", alias=...)` checks another schema against this same directory. The attribute is that schema.
   - An alias is required. `fmt` and `match` do not belong on this form.
   - `optional=True` skips that schema when it does not match. The directory is still there.
+  - `schema={...}` on the class line is the same dict as `schema =`. Do not set both.
+    [Typechecking](https://heyentropyyield.github.io/fs-schema/typechecking/)
+
+- **Read**
+  [Using schemas](https://heyentropyyield.github.io/fs-schema/reference/#using-schemas)
+  - A directory, schema, root, or bound directory iterates its children. A collection iterates its matches.
 
 - **Write**
   `parse`, `create`, `put`, `link_to`, `copy_to`
