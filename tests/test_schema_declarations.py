@@ -133,10 +133,36 @@ def test_skip_mismatch_drops_failed_file_matches_and_bad_directories(tmp_path: P
     assert len(hits) == 1
     assert hits[0].name == "20260102"
 
+    class DatedStrict(_schema.Schema):
+        schema = {
+            _schema.Dir(alias="days", fmt="{day:%Y%m%d}", match=r"20260102"): {"note": "note.json"},
+        }
+
+    failed = DatedStrict.bind(root)
+    assert isinstance(failed, MismatchErr)
+    assert "failed match" in str(failed)
+
+    class DatedSkipMatch(_schema.Schema):
+        schema = {
+            _schema.Dir(alias="days", fmt="{day:%Y%m%d}", match=r"20260102", skip_mismatch=True): {
+                "note": "note.json",
+            },
+        }
+
+    skipped_match = DatedSkipMatch.bind(root)
+    assert type(skipped_match) is DatedSkipMatch
+    assert [hit.name for hit in skipped_match.days] == ["20260102"]
+
+
+def test_match_only_format_rejected() -> None:
+    declaration = _schema.File(match=r"part-.+", min=0)
+    with pytest.raises(TypeError, match="declaration has no formatter"):
+        _schema._format_node(declaration)
+
 
 def test_exact_name_rejects_collection_only_flags() -> None:
     def sort_key(match: _schema.Match) -> str:
-        return match.path.name
+        return match.path.name  # pragma: no cover
 
     with pytest.raises(ValueError, match="sort is only valid"):
         _schema.File("value", sort=sort_key)  # pyright: ignore[reportCallIssue]

@@ -2,6 +2,17 @@
 
 API by git tag. Signatures: [reference](https://heyentropyyield.github.io/fs-schema/reference/).
 
+## v0.7.1
+
+`load(Model)` is the static call. `Loadable` is a file a helper can take. A directory iterates its children.
+
+- **Read**
+  [Using schemas](https://heyentropyyield.github.io/fs-schema/reference/#using-schemas)
+  - A directory, schema, root, or bound directory iterates its children. A collection iterates its matches.
+  - `file.load(Model)` is `Model | Exception` for a static checker. `load()` with no argument is the runtime call. A declared class must be that model or a subclass, or `load` raises `TypeError` before the read. No declared loader uses the argument. A callable loader rejects it.
+  - `Loadable` is a bound file or a file match passed into a helper. The helper calls `load(Model)`. A directory is not `Loadable`.
+    [Typechecking](https://heyentropyyield.github.io/fs-schema/typechecking/)
+
 ## v0.7.0
 
 One directory can carry several schemas. Links and tree copies are their own operations.
@@ -12,14 +23,6 @@ One directory can carry several schemas. Links and tree copies are their own ope
   - `Dir(".", alias=...)` checks another schema against this same directory. The attribute is that schema.
   - An alias is required. `fmt` and `match` do not belong on this form.
   - `optional=True` skips that schema when it does not match. The directory is still there.
-  - `schema={...}` on the class line is the same dict as `schema =`. Do not set both.
-    [Typechecking](https://heyentropyyield.github.io/fs-schema/typechecking/)
-
-- **Read**
-  [Using schemas](https://heyentropyyield.github.io/fs-schema/reference/#using-schemas)
-  - A directory, schema, root, or bound directory iterates its children. A collection iterates its matches.
-  - `file.load(Model)` is `Model | Exception` for a static checker. `load()` with no argument is the runtime call.
-  - `Loadable` is that file passed into a helper. The helper calls `load(Model)`. A directory is not `Loadable`.
 
 - **Write**
   `parse`, `create`, `put`, `link_to`, `copy_to`

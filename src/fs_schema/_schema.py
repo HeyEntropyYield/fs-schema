@@ -1116,10 +1116,10 @@ class SchemaCls(type):
         if node.name:
             if isinstance(defn, File):
                 base: type[object] = FixedFile
-            elif defn.child_type is not None:
-                return defn.child_type
             else:
-                base = FixedDir
+                # _directory_defn always sets child_type. FixedDir here would be a lie.
+                assert defn.child_type is not None  # pragma: no branch
+                return defn.child_type
         elif node.fmt is not None:
             base = Template
         else:

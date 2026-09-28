@@ -62,6 +62,7 @@ def test_pre_push_checks_branch_commits_and_tags() -> None:
         f"refs/heads/master {branch_sha} refs/heads/master {ZERO_SHA}\n"
         f"refs/tags/v1.2 {tag_sha} refs/tags/v1.2 {ZERO_SHA}\n"
         f"refs/tags/deleted {ZERO_SHA} refs/tags/deleted {tag_sha}\n"
+        f"refs/notes/x {tag_sha} refs/notes/x {tag_sha}\n"
         "\n"
     )
     commits: list[str] = []
@@ -155,6 +156,9 @@ def test_pyproject_mvp_main_roundtrip(tmp_path: Path) -> None:
     assert mvp_main(["-i", str(source), "-o", "-"], stdout=stdout) == 0
     text = stdout.getvalue()
     assert 'name = "x"' in text
+    out = tmp_path / "out.toml"
+    assert mvp_main(["-i", str(source), "-o", str(out)], stdout=io.StringIO()) == 0
+    text = out.read_text()
     assert "readme" not in text
     assert "[tool.ruff]" not in text
     assert "[tool.uv]" in text

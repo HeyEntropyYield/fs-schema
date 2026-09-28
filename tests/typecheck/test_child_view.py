@@ -13,7 +13,7 @@ def _pred(args: tuple[_fmt.CaptureField, ...], kwargs: _fmt.CaptureMap) -> bool:
     return bool(args or kwargs)
 
 
-def check(node: _schema._ChildView) -> None:
+def check(node: "_schema._ChildView") -> None:
     assert_type(node.path, Path)
     assert_type(node.name, str)
     assert_type(node.stem, str)

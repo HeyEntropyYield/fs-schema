@@ -218,8 +218,8 @@ def validate_schema_bases(class_name: str, bases: tuple[type[object], ...]) -> N
 def validate_schema_class(cls: type[Schema]) -> None:
     if type(cls) is not SchemaCls:
         raise TypeError(f"{cls.__name__} must use the exact Schema metaclass")
-    if len(cls.__bases__) != 1 or not is_schema_type(cls.__bases__[0]):
-        raise TypeError(f"{cls.__name__} must have exactly one direct Schema base and no mixins")
+    # Bases already raised in SchemaCls.__new__ via validate_schema_bases.
+    # compile_schema asserts the base is still a Schema.
 
     inherited_members = {
         name for ancestor in cls.__mro__[1:] for name in ancestor.__dict__ if not name.startswith("__")

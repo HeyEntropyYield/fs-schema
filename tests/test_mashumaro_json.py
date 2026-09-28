@@ -53,7 +53,7 @@ def test_plain_and_mixin_dataclasses_round_trip(tmp_path: Path) -> None:
     assert fss.raise_exn(bound.mixin.load()) == MixinModel(4)
 
 
-def test_orjson_backend_and_stdlib_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_orjson_backend_and_stdlib_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     encoder, decoder = _mashumaro_json._json_codecs(Manifest)
     assert type(encoder).__module__ == type(decoder).__module__ == "mashumaro.codecs.orjson"
 
@@ -73,6 +73,9 @@ def test_orjson_backend_and_stdlib_fallback(monkeypatch: pytest.MonkeyPatch) -> 
     with monkeypatch.context() as import_patch:
         import_patch.setattr(builtins, "__import__", without_orjson)
         fallback_encoder, fallback_decoder = _mashumaro_json._json_codecs(Manifest)
+        path = tmp_path / "fallback.json"
+        fss.put(path, Manifest("a", []))
+        assert path.read_text().startswith("{")
     assert type(fallback_encoder).__module__ == type(fallback_decoder).__module__ == "mashumaro.codecs.json"
 
 
@@ -92,6 +95,7 @@ def test_missing_mashumaro_error_names_extra(monkeypatch: pytest.MonkeyPatch) ->
 
     with monkeypatch.context() as import_patch:
         import_patch.setattr(builtins, "__import__", without_mashumaro)
+        assert without_mashumaro("json").__name__ == "json"
         with pytest.raises(TypeError, match=r"fs-schema\[mashumaro\]"):
             _mashumaro_json._json_codecs(Manifest)
 

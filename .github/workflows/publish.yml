@@ -120,4 +120,4 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: ./run.sh uv:venv:sync @@ gh:release
+        run: ./run.sh uv:venv:sync @@ gh:_release

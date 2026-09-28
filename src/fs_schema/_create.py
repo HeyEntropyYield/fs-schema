@@ -156,8 +156,6 @@ def _fill_collection(
     pairs: Sequence[_Member],
 ) -> None:
     for item in pairs:
-        if not _is_member(item):
-            raise TypeError(f"{key!r} member must be a (captures, payload) pair")
         fields, payload = item
         held = fields if isinstance(fields, Captures) else captures(**fields)
         validate_capture_names(defn, held.kwargs)

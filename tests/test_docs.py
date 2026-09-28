@@ -116,6 +116,58 @@ def test_generate_directive_writes_missing_output(tmp_path: Path) -> None:
     assert (docs / "out.txt").read_text() == "hello\n"
 
 
+def _mini_docs(tmp_path: Path, page: str, *, zensical: str = "[project]\nsite_name = 'x'\n") -> Path:
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (tmp_path / "zensical.toml").write_text(zensical)
+    (docs / "index.md").write_text(page)
+    return docs
+
+
+def test_docs_empty_generate(tmp_path: Path) -> None:
+    _mini_docs(tmp_path, "<!-- generate: docs/out.txt from    -->\n")
+    with pytest.raises(DocsInputError, match="empty generate command"):
+        external_inputs(tmp_path)
+
+
+def test_docs_include_cycle(tmp_path: Path) -> None:
+    docs = _mini_docs(tmp_path, "hello\n")
+    (docs / "a.md").write_text('--8<-- "docs/b.md"\n')
+    (docs / "b.md").write_text('--8<-- "docs/a.md"\n')
+    assert external_inputs(tmp_path) == ()
+
+
+def test_docs_generate_outside(tmp_path: Path) -> None:
+    _mini_docs(tmp_path, "<!-- generate: out.txt from tool.sh -->\n")
+    (tmp_path / "tool.sh").write_text("#!/bin/sh\n")
+    assert external_inputs(tmp_path) == ("out.txt", "tool.sh")
+
+
+def test_docs_stale_watch(tmp_path: Path) -> None:
+    _mini_docs(tmp_path, "hello\n", zensical='[project]\nwatch = ["extra.txt"]\n')
+    with pytest.raises(DocsInputError, match="not snippets"):
+        require_fresh(tmp_path)
+
+
+def test_docs_workflow_without_paths(tmp_path: Path) -> None:
+    _mini_docs(tmp_path, "hello\n", zensical="[project]\nwatch = []\n")
+    workflow = tmp_path / ".github/workflows"
+    workflow.mkdir(parents=True)
+    (workflow / "docs.yml").write_text("on:\n  push:\n    branches: [master]\n")
+    with pytest.raises(DocsInputError, match="no paths list"):
+        require_fresh(tmp_path)
+
+
+def test_docs_workflow_misses_snippet(tmp_path: Path) -> None:
+    _mini_docs(tmp_path, '--8<-- "README.md"\n', zensical='[project]\nwatch = ["README.md"]\n')
+    (tmp_path / "README.md").write_text("hi\n")
+    workflow = tmp_path / ".github/workflows"
+    workflow.mkdir(parents=True)
+    (workflow / "docs.yml").write_text("on:\n  push:\n    paths:\n      - docs/**\n")
+    with pytest.raises(DocsInputError, match=r"docs\.yml paths missing"):
+        require_fresh(tmp_path)
+
+
 def test_unknown_snippet_fails(tmp_path: Path) -> None:
     docs = tmp_path / "docs"
     docs.mkdir()

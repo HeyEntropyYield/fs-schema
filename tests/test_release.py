@@ -29,6 +29,7 @@ from scripts.release import (
     main,
     parse_lock_version,
     parse_project_metadata,
+    read_lock_version,
     read_project_metadata,
     run_process,
     smoke_index,
@@ -37,6 +38,17 @@ from scripts.release import (
 from tests.conftest import git_root
 
 Git = Any
+
+
+class _OwnedClient:
+    entered = False
+
+    def __enter__(self) -> "_OwnedClient":
+        type(self).entered = True
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
 
 
 def _error(match: str, fn: Callable[..., object], *args: object, **kwargs: object) -> None:
@@ -92,6 +104,7 @@ def test_parse_project_and_lock_reject_invalid_versions() -> None:
 
 def test_read_project_metadata_missing_file(tmp_path: Path) -> None:
     _error(f"{tmp_path / 'missing.toml'}:", read_project_metadata, tmp_path / "missing.toml")
+    _error(f"{tmp_path / 'missing.lock'}:", read_lock_version, tmp_path / "missing.lock", "sample")
 
 
 def test_git_returns_error_outside_a_repo(tmp_path: Path) -> None:
@@ -108,6 +121,7 @@ def test_run_process_includes_stderr() -> None:
 
 def test_version_metadata_requires_lockfile_agreement(release_repo: tuple[Path, Git]) -> None:
     repo, _ = release_repo
+    assert check_version_metadata(repo / "pyproject.toml", repo / "uv.lock") == Version("1.0")
     (repo / "uv.lock").write_text('version = 1\n[[package]]\nname = "sample"\nversion = "1.1"\n')
     _error("!= lock", check_version_metadata, repo / "pyproject.toml", repo / "uv.lock")
 
@@ -123,6 +137,23 @@ def test_check_commit_requires_exact_subject_and_only_version_files(release_repo
 
     git_cmd("add", "extra.txt")
     _error("stage", check_commit, "v1.1rc1", root=repo)
+
+
+def test_check_commit_lock_mismatch(release_repo: tuple[Path, Git]) -> None:
+    repo, git_cmd = release_repo
+    _write_version_files(repo, "1.1")
+    (repo / "uv.lock").write_text('version = 1\n[[package]]\nname = "sample"\nversion = "1.0"\n')
+    git_cmd("add", "pyproject.toml", "uv.lock")
+    _error("!= lock", check_commit, "v1.1", root=repo)
+
+
+def test_check_commit_unreadable_head(release_repo: tuple[Path, Git]) -> None:
+    repo, git_cmd = release_repo
+    (repo / "pyproject.toml").write_text("not toml [[[\n")
+    _commit(git_cmd, "break metadata", "pyproject.toml")
+    _write_version_files(repo, "1.1")
+    git_cmd("add", "pyproject.toml", "uv.lock")
+    assert check_commit("v1.1", root=repo) == Version("1.1")
 
 
 def test_check_commit_rejects_version_subject_without_bump(release_repo: tuple[Path, Git]) -> None:
@@ -203,6 +234,24 @@ def test_check_tag_requires_annotated_matching_annotation(release_repo: tuple[Pa
     message.write_text("v1.1\n\nextra body\n")
     git_cmd("tag", "-a", "v1.1", "-F", str(message))
     _error("annotation", check_tag, "v1.1", root=repo)
+
+
+def test_check_tag_other_commit(release_repo: tuple[Path, Git]) -> None:
+    repo, git_cmd = release_repo
+    _write_version_files(repo, "1.1")
+    version_commit = _commit(git_cmd, "v1.1", "pyproject.toml", "uv.lock")
+    (repo / "extra.txt").write_text("later")
+    later = _commit(git_cmd, "later", "extra.txt")
+    git_cmd("tag", "v1.1", later)
+    _error(f"v1.1 != {version_commit}", check_tag, "v1.1", ref=version_commit, root=repo)
+
+
+def test_check_ref_lock_mismatch(release_repo: tuple[Path, Git]) -> None:
+    repo, git_cmd = release_repo
+    _write_version_files(repo, "1.1")
+    (repo / "uv.lock").write_text('version = 1\n[[package]]\nname = "sample"\nversion = "1.0"\n')
+    _commit(git_cmd, "v1.1", "pyproject.toml", "uv.lock")
+    _error("!= lock", check_ref, root=repo)
 
 
 def test_check_tag_missing_local_tag(release_repo: tuple[Path, Git]) -> None:
@@ -433,10 +482,47 @@ def test_smoke_install_uses_uv_run(tmp_path: Path) -> None:
     ]
 
 
+def test_fetch_published_versions_owns_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    _OwnedClient.entered = False
+    monkeypatch.setattr("scripts.release.httpx.Client", lambda **_kwargs: _OwnedClient())
+    monkeypatch.setattr("scripts.release._get", lambda *_args: httpx.Response(404))
+    assert fetch_published_versions("pypi", "sample") == ()
+    assert _OwnedClient.entered
+
+
 def test_smoke_install_expected_mismatch(tmp_path: Path) -> None:
     wheel = tmp_path / "pkg.whl"
     wheel.write_bytes(b"")
     _error("!=", smoke_install, str(wheel), expected="2.0", runner=lambda _: "1.0")
+
+
+def test_smoke_install_nonfile_spec() -> None:
+    commands: list[Sequence[str]] = []
+
+    def runner(command: Sequence[str]) -> str:
+        commands.append(command)
+        return "1.0"
+
+    assert smoke_install("sample==1.0", runner=runner) == "1.0"
+    assert "sample==1.0" in commands[0]
+
+
+def test_smoke_index_bad_target_and_version(monkeypatch: pytest.MonkeyPatch) -> None:
+    _error("target", smoke_index, "other", runner=lambda _command: "1.0")
+    monkeypatch.setattr("scripts.release.read_project_metadata", lambda: ("fs-schema", Version("1.0")))
+    _error("!=", smoke_index, "pypi", runner=lambda _command: "9.9")
+
+
+def test_changelog_notes_missing_file(tmp_path: Path) -> None:
+    missing = tmp_path / "missing.md"
+    _error(f"{missing}:", changelog_notes, version=Version("1.0"), changelog_path=missing)
+
+
+def test_main_check_tag(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("scripts.release.check_tag", lambda *_args, **_kwargs: Version("1.2"))
+    stdout = io.StringIO()
+    assert main(["check-tag", "v1.2"], stdout=stdout) == 0
+    assert stdout.getvalue() == "ok v1.2 HEAD\n"
 
 
 def test_smoke_index_installs_from_target(monkeypatch: pytest.MonkeyPatch) -> None:

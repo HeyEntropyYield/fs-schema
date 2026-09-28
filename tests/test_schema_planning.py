@@ -196,6 +196,16 @@ def test_plan_bind_and_bound_root_are_fresh_exact_top_level_transitions(
     assert reopened.path == second.path
 
 
+def test_stem_number_decoder(tmp_path: Path) -> None:
+    class Parts(Schema):
+        schema = {"parts": File(fmt="part-{part:d}.bin", schema=_decode_number, min=0)}
+
+    _ = (tmp_path / "part-7.bin").write_bytes(b"")
+    bound = Parts.bind(tmp_path)
+    assert type(bound) is Parts
+    assert bound.parts[0].load() == 7
+
+
 def test_root_plan_accepts_pathlike_without_touching_it(monkeypatch: pytest.MonkeyPatch) -> None:
     class PathToken:
         def __fspath__(self) -> str:

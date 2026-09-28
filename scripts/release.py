@@ -33,9 +33,9 @@ from packaging.version import InvalidVersion, Version
 from ._io import TextWriter, TomlObj, argv_tail
 
 if sys.version_info >= (3, 11):
-    from tomllib import loads as loads_toml
+    from tomllib import loads as loads_toml  # pragma: >=3.11 cover
 else:
-    from tomli import loads as loads_toml
+    from tomli import loads as loads_toml  # pragma: <3.11 cover
 
 REPO = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = REPO
@@ -84,8 +84,8 @@ def run_process(command: Sequence[str]) -> str:
 
 def _toml(content: str) -> TomlObj:
     parsed = loads_toml(content)
-    if not isinstance(parsed, dict):
-        raise ReleaseError("not a table")
+    # A TOML document is a table. tomli rejects a root array before this.
+    assert isinstance(parsed, dict)  # pragma: no branch
     return parsed
 
 
@@ -393,8 +393,8 @@ def dispatch(argv: Sequence[str] = sys.argv) -> str:
             return changelog_notes().rstrip("\n")
         case {"is-prerelease": True}:
             return "yes" if is_prerelease() else "no"
-        case _:
-            raise ReleaseError("unhandled")
+        case _:  # pragma: no cover
+            raise AssertionError("unhandled")
 
 
 def main(

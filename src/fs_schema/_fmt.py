@@ -9,7 +9,7 @@ from typing import Final, TypeAlias
 
 from beartype.typing import Protocol
 from parse import Parser
-from typing_extensions import override
+from typing_extensions import assert_never, override
 
 FmtLike: TypeAlias = str
 # A parsed template field: {n:d} -> int, {stem} -> str, dt() -> datetime.
@@ -128,8 +128,8 @@ def _capture_value(value: _ParserField) -> FmtField:
             return value
         case time():
             raise TypeError("time captures are unsupported")
-        case _:  # pyright: ignore[reportUnnecessaryComparison]
-            raise TypeError("unexpected capture type")  # pyright: ignore[reportUnreachable]
+        case _:  # pragma: no cover
+            assert_never(value)
 
 
 def _is_strftime_spec(spec: str) -> bool:

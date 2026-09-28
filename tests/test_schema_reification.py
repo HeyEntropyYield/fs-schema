@@ -7,7 +7,7 @@ from typing import ClassVar
 import pytest
 
 from fs_schema import FILES, Dir, File, Schema
-from fs_schema._schema import DirDefn, FixedFile, Matches, Template
+from fs_schema._schema import _BOUND_MATCH, DirDefn, FixedFile, Matches, SchemaCls, Template
 
 
 def _define(layout: object) -> type[Schema]:
@@ -322,7 +322,7 @@ def test_schema_policy_rejects_mixins_multiple_inheritance_and_custom_metaclass(
 
     class Mixin:
         def __init_subclass__(cls) -> None:
-            events.append(cls.__name__)
+            events.append(cls.__name__)  # pragma: no cover
 
     with pytest.raises(TypeError, match="exactly one direct Schema base"):
         type("BadLeft", (Mixin, Schema), {})
@@ -344,6 +344,10 @@ def test_schema_policy_rejects_mixins_multiple_inheritance_and_custom_metaclass(
 
     with pytest.raises(TypeError, match="exact Schema metaclass"):
         CustomMeta("BadMeta", (Schema,), {})
+
+    odd = SchemaCls("Odd", (object,), {_BOUND_MATCH: True})
+    with pytest.raises(AttributeError):
+        _ = odd.missing
 
 
 @pytest.mark.parametrize(

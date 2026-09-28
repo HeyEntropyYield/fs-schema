@@ -139,6 +139,18 @@ class _Pics(Schema):
     schema = {"images": File(fmt="{stem}.{ext}", match=r".+\.png")}
 
 
+class _MatchPics(Schema):
+    schema = {"images": File(match=r".+\.png", min=0)}
+
+
+class _Fspath:
+    def __init__(self, text: str) -> None:
+        self._text = text
+
+    def __fspath__(self) -> str:
+        return self._text
+
+
 class _Holder(Schema):
     schema = {"note": {"body": "body.txt"}}
 
@@ -272,6 +284,20 @@ def test_stamp_failure_modes(tmp_path: Path) -> None:
     for body in ("nope", b"nope", tmp_path):
         with pytest.raises(TypeError, match="is a collection"):
             _Shelf.relative_to(tmp_path / "plain").create(days=body)
+
+
+def test_collection_create_pathlike_and_unformatted(tmp_path: Path) -> None:
+    when = datetime(2026, 9, 17)
+    source = tmp_path / "src.txt"
+    _ = source.write_text("copied")
+    _ = _Shelf.relative_to(tmp_path / "copied").days.format(day=when).create(extra={"body": _Fspath(str(source))})
+    assert (tmp_path / "copied" / "2026-09-17" / "extra" / "2026-09-17.txt").read_text() == "copied"
+    with pytest.raises(TypeError, match="missing captures"):
+        _Groups.relative_to(tmp_path / "pathlike").groups.format(n=1).create(files=_Fspath("unused"))
+    with pytest.raises(TypeError, match="has no formatter"):
+        _MatchPics.relative_to(tmp_path / "pairs").create(images=[(captures(part=0), b"png")])
+    with pytest.raises(TypeError, match="is a collection"):
+        _MatchPics.relative_to(tmp_path / "body").create(images=b"png")
 
 
 def test_schema_link_to_and_copy_to(tmp_path: Path) -> None:

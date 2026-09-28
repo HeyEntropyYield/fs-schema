@@ -411,7 +411,7 @@ class Loadable(Protocol):
     def load(self, model: type[Model]) -> Model | Exception: ...
 ```
 
-`Loadable` is a bound file a helper can take. The helper calls `load(Model)`. A directory does not have it.
+`Loadable` is a bound file or a file match a helper can take. The helper calls `load(Model)`. A directory does not have it.
 
 The concrete `kwargs` mapping also supports capture access by attribute, as
 shown above.
@@ -516,6 +516,8 @@ Install `fs-schema[orjson]` for a faster JSON encoder.
 `load()` returns a decoding failure as a value.
 `load(Model)` is the same call, typed as `Model | Exception`, so a static checker can name the model.
 Pure runtime typechecking uses `load()` with no argument.
+`load(Model)` raises `TypeError` before the read when the declared loader is a callable, or a class that is not that model or a subclass of it.
+No declared loader uses the argument.
 `raise_exn` raises that failure and keeps the success type.
 
 ```text

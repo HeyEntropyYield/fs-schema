@@ -223,17 +223,24 @@ def test_copy_to_refuses_overlapping_paths(tmp_path: Path, layout: str) -> None:
     src = tmp_path / "src"
     src.mkdir()
     _ = (src / "file.txt").write_text("body")
-    match layout:
-        case "same":
-            dest = src
-        case "dest-inside-source":
-            dest = src / "nested"
-        case "source-inside-dest":
-            dest = tmp_path
-        case _:
-            raise AssertionError(layout)
+    dest = {
+        "same": src,
+        "dest-inside-source": src / "nested",
+        "source-inside-dest": tmp_path,
+    }[layout]
     with pytest.raises(ValueError, match="onto itself"):
         _ops.copy_to(src, dest)
+
+
+def test_copy_to_symlink_replaces_file(tmp_path: Path) -> None:
+    real = tmp_path / "real.txt"
+    _ = real.write_text("body")
+    src = tmp_path / "src.txt"
+    src.symlink_to(real)
+    dest = tmp_path / "dest.txt"
+    _ = dest.write_text("old")
+    _ops.copy_to(src, dest, follow_symlinks=False)
+    assert dest.is_symlink() and dest.readlink() == real and dest.read_text() == "body"
 
 
 def test_copy_to_recreates_a_symlink_to_a_directory(tmp_path: Path) -> None:

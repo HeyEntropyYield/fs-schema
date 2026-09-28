@@ -270,6 +270,7 @@ def test_bind_result_bool_and_empty_collection(tmp_path: Path) -> None:
 
 def test_dangling_symlink_is_named(tmp_path: Path) -> None:
     (tmp_path / "gone.png").symlink_to(tmp_path / "missing.png")
+    (tmp_path / "note.txt").symlink_to(tmp_path / "missing.txt")
 
     class Pics(Schema):
         schema = {"images": File(match=r".+\.png", min=1)}
@@ -279,6 +280,19 @@ def test_dangling_symlink_is_named(tmp_path: Path) -> None:
     assert "gone.png" in str(err)
     (tmp_path / "here.png").write_bytes(b"png")
     assert not isinstance(Pics.bind(tmp_path), MismatchErr)
+
+
+def test_bound_file_exists_rejects_raw_basename(tmp_path: Path) -> None:
+    _ = (tmp_path / "my-note.txt").write_text("n")
+
+    class Named(Schema):
+        schema = {"note": "my-note.txt"}
+
+    bound = Named.bind(tmp_path)
+    assert isinstance(bound, Named)
+    assert bound.note.exists()
+    with pytest.raises(AttributeError):
+        getattr(bound, "my-note.txt")
 
 
 def test_root_kind_validation_including_empty_schemas(tmp_path: Path) -> None:

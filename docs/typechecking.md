@@ -89,7 +89,7 @@ loaded = node.load(Manifest)
 
 `load()` with no argument is the runtime call. A runtime checker already sees the declared model, so it does not need the argument. Pass a model when you do not want to annotate the variable. If the file declares no loader, that argument is what gets used. If it declares a class, the class has to be that model or a subclass of it. Otherwise `load` raises `TypeError` and does not read the file. A callable loader has no class to compare, so call `load()` with no argument.
 
-A helper that loads one file takes `Loadable` and calls `load(Manifest)`. A directory is not `Loadable`.
+A helper that loads one file or file match takes `Loadable` and calls `load(Manifest)`. A directory is not `Loadable`.
 
 ### Sort keys
 

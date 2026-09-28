@@ -196,7 +196,7 @@ pkg:bump(){
 }
 
 # @describe Build sdist and wheel into dist/
-pkg:build(){ uv build --no-sources --clear "$@"; }
+pkg:_build(){ uv build --no-sources --clear "$@"; }
 
 # @describe Run test.yml locally via act (check -> build wheel -> test wheel -> coverage)
 # @arg rest~ extra act args
@@ -240,7 +240,7 @@ Path("coverage.json").write_text(
 
 # @describe Local tox matrix in parallel (one worker per CPU)
 # @arg rest~ extra tox args
-ci:tox(){
+ci:_tox(){
   local envs
   envs="$(echo "$PYTHON_VERSIONS" | tr ' ' ',')"
   _need_venv || return $?
@@ -258,9 +258,9 @@ release:check(){
   _need_venv || return $?
   release:_check-ref || return $?
   check || return $?
-  ci:tox || return $?
+  ci:_tox || return $?
   rm -rf dist
-  pkg:build || return $?
+  pkg:_build || return $?
   twine check dist/* || return $?
   check-wheel-contents dist/*.whl || return $?
   version="$(_release version)" || return $?
@@ -322,10 +322,10 @@ release:_verify(){
 }
 
 # @describe Run local TestPyPI release
-release:testpypi(){ _publish_local testpypi; }
+release:_testpypi(){ _publish_local testpypi; }
 
 # @describe Run local tagged PyPI release
-release:pypi(){ _publish_local pypi; }
+release:_pypi(){ _publish_local pypi; }
 
 # @describe Dispatch and watch remote test.yml
 # @arg ref branch, tag, or SHA; defaults to current branch
@@ -346,7 +346,7 @@ gh:publish:testpypi(){
 }
 
 # @describe Create gh release for current vVERSION tag
-gh:release(){
+gh:_release(){
   local version tag notes extra=() assets=()
   _need_venv || return $?
   _has_cmd gh || return $?

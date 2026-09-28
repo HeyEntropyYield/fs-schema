@@ -115,11 +115,11 @@ def _write_puttable(target: Path, data: Puttable | PathIsh | None) -> None:
                     _ = target.write_bytes(encoded)
                 case str():
                     _ = target.write_text(encoded)
-                case _:
+                case _:  # pragma: no cover
                     assert_never(encoded)
         case os.PathLike():
             _ = copyfile(Path(data), target)
-        case _:
+        case _:  # pragma: no cover
             assert_never(data)
 
 
@@ -128,7 +128,7 @@ def _link(temporary: Path, source: PathIsh, *, hard: bool) -> None:
     match hard:
         case True:
             os.link(source, temporary)
-        case False:
+        case False:  # pragma: no branch
             os.symlink(source, temporary)
 
 

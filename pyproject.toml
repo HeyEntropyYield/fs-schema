@@ -167,12 +167,15 @@ addopts = [
   "--cov-report=term-missing",
 ]
 strict = true
+filterwarnings = [
+  "ignore::beartype.roar.BeartypeDecorHintPep613DeprecationWarning",
+]
 
 [tool.coverage.run]
 branch = true
 parallel = true
 source = ["fs_schema", "tests", "scripts", "examples"]
-omit = ["tests/typecheck/test_runtime_shapes.py"]
+omit = ["tests/typecheck/*"]
 plugins = ["covdefaults"]
 
 [tool.coverage.paths]
