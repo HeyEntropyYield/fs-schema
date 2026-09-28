@@ -18,6 +18,8 @@ One directory can carry several schemas. Links and tree copies are their own ope
 - **Read**
   [Using schemas](https://heyentropyyield.github.io/fs-schema/reference/#using-schemas)
   - A directory, schema, root, or bound directory iterates its children. A collection iterates its matches.
+  - `file.load(Model)` is `Model | Exception` for a static checker. `load()` with no argument is the runtime call.
+  - `Loadable` is that file passed into a helper. The helper calls `load(Model)`. A directory is not `Loadable`.
 
 - **Write**
   `parse`, `create`, `put`, `link_to`, `copy_to`

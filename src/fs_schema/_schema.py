@@ -19,10 +19,12 @@ from typing import (
 
 from plum import dispatch
 from typing_extensions import (
+    Never,
     Protocol,
     Self,
     TypeIs,
     TypeVar,
+    assert_never,
     override,
     runtime_checkable,
 )
@@ -44,6 +46,9 @@ _D_co = TypeVar("_D_co", bound="Schema", covariant=True)
 # nothing about mutability of the loaded value.
 _L = TypeVar("_L")
 _L_co = TypeVar("_L_co", covariant=True, default=object)
+_Model = TypeVar("_Model")
+# Unannotated load() is object. An assignment annotation solves this variable.
+_Loaded = TypeVar("_Loaded", default=object)
 # Template collections only produce their concrete Match subtype.
 _M_co = TypeVar("_M_co", bound="Match", covariant=True)
 _Default = TypeVar("_Default")
@@ -353,10 +358,6 @@ class _Fixed:
         return True
 
 
-def _load_model(path: Path, schema: type[_L_co]) -> _L_co | Exception:
-    return load(path, schema)
-
-
 class FixedFile(_Fixed, Generic[_L_co]):
     alias: ClassVar[str | None]
     fmt: ClassVar[FmtLike | None]
@@ -379,13 +380,20 @@ class FixedFile(_Fixed, Generic[_L_co]):
         put(self.path, data)
         return self
 
-    def load(self) -> _L_co | Exception:
-        schema = self.defn.schema
-        if schema is None:
+    def load(self, model: type[_Model] | None = None) -> _L_co | Exception:
+        declared = self.defn.schema
+        if model and declared and not (isinstance(declared, type) and issubclass(declared, model)):
+            if isinstance(declared, type):
+                raise TypeError(
+                    f"{self.path}: declared loader {declared.__name__} is not a subclass of {model.__name__}"
+                )
+            raise TypeError(f"{self.path}: load needs a class loader, not {declared!r}")
+        if not (schema := declared or model):
             return Exception(f"file has no declared loader: {self.path}")
-        if isinstance(schema, type):
-            return typing.cast(_L_co | Exception, _load_model(self.path, schema))
-        return load(self.path, schema)
+        got = load(self.path, schema)
+        if not model or isinstance(got, Exception | model):
+            return typing.cast(_L_co | Exception, got)
+        assert_never(typing.cast(Never, got))
 
 
 def normalize_name(name: str) -> str:
@@ -606,7 +614,11 @@ if TYPE_CHECKING:
             self, target: PathIsh, *, hard: bool = False
         ) -> None: ...  # FixedFile, FixedDir, _FileMatch, _DirMatch
 
-        def load(self) -> object | Exception: ...  # FixedFile, _FileMatch
+        @overload
+        def load(self) -> _Loaded | Exception: ...  # FixedFile, _FileMatch
+
+        @overload
+        def load(self, model: type[_Model]) -> _Model | Exception: ...  # FixedFile, _FileMatch
 
         def parse(self, source: PathIsh) -> "_ChildView": ...  # Matches, Template
 

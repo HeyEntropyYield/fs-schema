@@ -180,6 +180,8 @@ def test_callable_loading_preserves_generic_runtime_declaration(tmp_path: Path) 
     assert isinstance(bound, FixedDir)
     fixed, matches = bound
     assert isinstance(fixed, FixedFile) and fixed.defn is fixed_defn and fixed.load() == 7
+    with pytest.raises(TypeError, match="class loader"):
+        fixed.load(int)
     assert isinstance(matches, Template)
     first_match = matches[0]
     assert isinstance(first_match, _FileMatch) and first_match.defn is match_defn and first_match.load() == 2
@@ -190,6 +192,17 @@ def test_callable_loading_preserves_generic_runtime_declaration(tmp_path: Path) 
     assert isinstance(model_file, FixedFile)
     failure = model_file.load()
     assert isinstance(failure, TypeError) and "requires a .json file" in str(failure)
+    assert isinstance(model_file.load(int), TypeError)
+    with pytest.raises(TypeError, match="not a subclass of str"):
+        model_file.load(str)
+    bare = bind_defns(root, (File(name="fixed.num"),))
+    assert isinstance(bare, FixedDir)
+    bare_file = bare[0]
+    assert isinstance(bare_file, FixedFile)
+    missing = bare_file.load()
+    assert isinstance(missing, Exception) and "no declared loader" in str(missing)
+    used_model = bare_file.load(int)
+    assert isinstance(used_model, Exception) and "no declared loader" not in str(used_model)
 
 
 def test_exact_root_and_fixed_explicit_inline_child_types(tmp_path: Path) -> None:

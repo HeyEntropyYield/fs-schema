@@ -50,3 +50,13 @@ class Located(Protocol):
     def path(self) -> Path: ...
 
     def __fspath__(self) -> str: ...
+
+
+# A bound file a caller can pass without naming _ChildView. Narrow on purpose:
+# the full view is not one runtime object, so it cannot be runtime_checkable.
+_LoadAsT = TypeVar("_LoadAsT")
+
+
+@runtime_checkable
+class Loadable(Protocol):
+    def load(self, model: type[_LoadAsT]) -> _LoadAsT | Exception: ...

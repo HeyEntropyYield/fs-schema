@@ -62,12 +62,34 @@ Every child name has the same static type. So some calls pass the checker and th
 - A name that is not in the schema raises `AttributeError`.
 - A missing optional file is `None`.
 - `format` or `len` on an exact file raises.
-- `load()` through a child name is `object | Exception`. The checker does not know it returns the model you declared on that file.
 - `read_text` and `read_bytes` typecheck on every child. A directory does not have them at runtime.
 
 basedpyright gives no diagnostic for any of these. The code typechecks, and the problem only shows up at runtime.
 
 When you need the real type, annotate that one name where you use it. You could also write out a type for every child on the class, but that repeats the layout, and the package does not ask you to do it.
+
+### Loading
+
+`load()` on a child is `object | Exception` until you name the model. With no annotation, that is as specific as the type gets: the file's model is not on the child type. An ignore on `load` itself would not change the caller's error.
+
+Write the type on the assignment. basedpyright fills the result in from that annotation, so there is no `reportAssignmentType` to ignore:
+
+```text
+loaded: Manifest | Exception = node.load()
+manifest: Manifest = fss.raise_exn(node.load())
+```
+
+After `isinstance(loaded, Exception)`, the checker treats `loaded` as `Manifest`.
+
+Or pass the model. Same result, and the annotation can sit on the call instead of the variable:
+
+```text
+loaded = node.load(Manifest)
+```
+
+`load()` with no argument is the runtime call. A runtime checker already sees the declared model, so it does not need the argument. Pass a model when you do not want to annotate the variable. If the file declares no loader, that argument is what gets used. If it declares a class, the class has to be that model or a subclass of it. Otherwise `load` raises `TypeError` and does not read the file. A callable loader has no class to compare, so call `load()` with no argument.
+
+A helper that loads one file takes `Loadable` and calls `load(Manifest)`. A directory is not `Loadable`.
 
 ### Sort keys
 

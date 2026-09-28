@@ -30,4 +30,4 @@ from ._schema import (
     Schema as Schema,
     SchemaRoot as SchemaRoot,
 )
-from ._types import Located as Located
+from ._types import Loadable as Loadable, Located as Located

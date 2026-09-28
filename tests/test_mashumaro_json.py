@@ -44,7 +44,12 @@ def test_plain_and_mixin_dataclasses_round_trip(tmp_path: Path) -> None:
 
     bound = fss.raise_mismatch(root.bind())
     assert fss.raise_exn(bound.fixed.load()) == Manifest("fixed", [Child(2)])
+    assert fss.raise_exn(bound.fixed.load(Manifest)) == Manifest("fixed", [Child(2)])
+    assert bound.fixed.load(object) == Manifest("fixed", [Child(2)])
+    with pytest.raises(TypeError, match="not a subclass of MixinModel"):
+        bound.fixed.load(MixinModel)
     assert fss.raise_exn(bound.matched[0].load()) == Manifest("matched", [Child(3)])
+    assert fss.raise_exn(bound.matched[0].load(Manifest)) == Manifest("matched", [Child(3)])
     assert fss.raise_exn(bound.mixin.load()) == MixinModel(4)
 
 
@@ -141,3 +146,4 @@ def test_declared_model_keeps_generic_load_type() -> None:
     fixed = _schema.FixedFile(Path("manifest.json"), declaration)
     assert_type(declaration, fss.File[Manifest])
     assert_type(fixed.load(), Manifest | Exception)
+    assert_type(fixed.load(Manifest), Manifest | Exception)

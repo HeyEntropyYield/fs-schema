@@ -405,7 +405,13 @@ class Match(Located, Protocol):
     def args(self) -> tuple[str | int | datetime | None, ...]: ...
     @property
     def kwargs(self) -> Mapping[str, str | int | datetime | None]: ...
+
+@runtime_checkable
+class Loadable(Protocol):
+    def load(self, model: type[Model]) -> Model | Exception: ...
 ```
+
+`Loadable` is a bound file a helper can take. The helper calls `load(Model)`. A directory does not have it.
 
 The concrete `kwargs` mapping also supports capture access by attribute, as
 shown above.
@@ -480,6 +486,7 @@ fs: fss.SchemaRoot[Delivery] = delivery.root()
 | `file.create(data=None)` | Atomic write of one file. Creates missing parents |
 | `dir.create(spec=None, **children)` | `mkdir` this directory and required child directories, then write the spec |
 | `file.load()` | Declared value or decoding exception |
+| `file.load(Model)` | `Model` or an exception. For a static checker. No argument is the runtime call |
 | `fss.put(path, data=None)` | Atomic file write. Creates missing parents |
 
 ```python
@@ -507,6 +514,8 @@ The string `"notes.txt"` writes the text `notes.txt`, even when `notes.txt` exis
 Install `fs-schema[mashumaro]` for dataclass JSON.
 Install `fs-schema[orjson]` for a faster JSON encoder.
 `load()` returns a decoding failure as a value.
+`load(Model)` is the same call, typed as `Model | Exception`, so a static checker can name the model.
+Pure runtime typechecking uses `load()` with no argument.
 `raise_exn` raises that failure and keeps the success type.
 
 ```text
