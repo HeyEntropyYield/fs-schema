@@ -128,7 +128,7 @@ def _capture_value(value: _ParserField) -> FmtField:
             return value
         case time():
             raise TypeError("time captures are unsupported")
-        case _:  # pragma: no cover
+        case _:
             assert_never(value)
 
 

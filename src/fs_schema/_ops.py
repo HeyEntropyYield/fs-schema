@@ -115,11 +115,11 @@ def _write_puttable(target: Path, data: Puttable | PathIsh | None) -> None:
                     _ = target.write_bytes(encoded)
                 case str():
                     _ = target.write_text(encoded)
-                case _:  # pragma: no cover
+                case _:
                     assert_never(encoded)
         case os.PathLike():
             _ = copyfile(Path(data), target)
-        case _:  # pragma: no cover
+        case _:
             assert_never(data)
 
 

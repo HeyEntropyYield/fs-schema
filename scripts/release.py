@@ -393,7 +393,7 @@ def dispatch(argv: Sequence[str] = sys.argv) -> str:
             return changelog_notes().rstrip("\n")
         case {"is-prerelease": True}:
             return "yes" if is_prerelease() else "no"
-        case _:  # pragma: no cover
+        case _:
             raise AssertionError("unhandled")
 
 

@@ -32,16 +32,11 @@ Commands:
   docs:serve                   Serve docs locally
  CI / maintainer
   pkg:bump                     Update version, lockfile, & commit
-  pkg:build                    Build sdist and wheel into dist/
-  ci:tox                       Local tox matrix in parallel (one worker per CPU)
   release:check                Build, inspect, and clean-install both local artifacts
   release:tag                  Create annotated vVERSION tag at clean release HEAD
-  release:testpypi             Run local TestPyPI release
-  release:pypi                 Run local tagged PyPI release
   gh:ci                        Dispatch and watch remote test.yml
   gh:docs                      Dispatch and watch remote docs.yml
   gh:publish:testpypi          Dispatch, test, publish, and verify through gh
-  gh:release                   Create gh release for current vVERSION tag
   gh:publish:pypi              Dispatch, test, publish, and verify prod release through gh
  Docker
   docker:build                 Build image
