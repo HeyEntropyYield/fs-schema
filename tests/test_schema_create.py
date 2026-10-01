@@ -105,6 +105,8 @@ def test_create_rejects_unknown_collection_and_duplicate_keys(tmp_path: Path) ->
         fs.create(manifest={"nope": 1})
     with pytest.raises(BeartypeCallHintParamViolation):
         fs.create(manifest=1)
+    with pytest.raises(FileNotFoundError):
+        fs.receipt.create(tmp_path / "gone.txt")
 
 
 def test_none_omits_an_optional(tmp_path: Path) -> None:

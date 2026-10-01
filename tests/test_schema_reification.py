@@ -6,7 +6,7 @@ from typing import ClassVar
 
 import pytest
 
-from fs_schema import FILES, Dir, File, Schema
+from fs_schema import FILES, Dir, File, MismatchErr, Schema
 from fs_schema._schema import _BOUND_MATCH, DirDefn, FixedFile, Matches, SchemaCls, Template
 
 
@@ -411,6 +411,38 @@ def test_coincident_identities_on_one_child_are_valid() -> None:
     assert Coincident.same.match is None
     assert issubclass(Coincident.parts, Matches)
     assert Coincident.parts.match == "part-.+"
+
+
+def test_files_with_overrides_one_child(tmp_path: Path) -> None:
+    class Loaded(Schema):
+        schema = {"receipt": File("receipt.json"), "note": "note.txt"}
+
+    copied = Loaded.receipt.with_(optional=True)
+    assert isinstance(Loaded.receipt, type)
+    assert isinstance(copied, File)
+    assert copied.alias == "receipt" and copied.name == "receipt.json" and copied.min == 0
+
+    class Staged(Loaded):
+        schema = {FILES: [copied]}
+
+    note = tmp_path / "note.txt"
+    _ = note.write_text("n")
+    assert isinstance(Loaded.bind(tmp_path), MismatchErr)
+    staged = Staged.bind(tmp_path)
+    assert type(staged) is Staged
+    assert staged.receipt is None
+    assert staged.note.read_text() == "n"
+    names = [(defn.name, defn.min) for defn in Staged._schema_defn.defns if isinstance(defn, File)]
+    assert names == [("receipt.json", 0), ("note.txt", 1)]
+
+    _ = (tmp_path / "receipt.json").write_text("{}")
+    present = Staged.bind(tmp_path)
+    assert type(present) is Staged
+    assert present.receipt is not None
+    assert present.receipt.read_text() == "{}"
+
+    with pytest.raises(TypeError, match="duplicate child key"):
+        _ = type("Misspelled", (Loaded,), {"schema": {"reciept": copied}})
 
 
 def test_subclass_overrides_one_nested_file_and_keeps_siblings() -> None:

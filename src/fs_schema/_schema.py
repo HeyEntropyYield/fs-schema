@@ -2,7 +2,7 @@ import os
 import re
 import typing
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from dataclasses import KW_ONLY, InitVar, dataclass, field
+from dataclasses import KW_ONLY, InitVar, dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from types import MappingProxyType
@@ -115,6 +115,9 @@ class Node:
         object.__setattr__(self, "_selector", selector)
         if self.max is None and maximum is not None:
             object.__setattr__(self, "max", maximum)
+
+    def with_(self, /, **changes: object) -> Self:
+        return replace(self, **changes)
 
     def select(self, basename: str) -> ParsedCaptures | None:
         return self._selector.captures(basename)

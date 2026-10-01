@@ -79,6 +79,18 @@ def test_beartype_rejects_invalid_declaration_atomic_inputs() -> None:
         _schema.Dir(min="1")  # pyright: ignore[reportCallIssue]
 
 
+def test_with_copies_optional_exact_name() -> None:
+    required = _schema.File("receipt.json", schema=str)
+    optional = required.with_(optional=True)
+    assert optional == _schema.File("receipt.json", schema=str, optional=True)
+    assert required.min == 1
+    assert _schema.Dir("notes").with_(optional=True).min == 0
+    aliased = required.with_(alias="receipt")
+    assert aliased.alias == "receipt" and aliased.schema is str
+    with pytest.raises(ValueError, match="optional is only valid"):
+        _schema.File(fmt="{value}").with_(optional=True)
+
+
 def test_exact_optional_sets_min_zero() -> None:
     file = _schema.File("receipt.json", optional=True)
     assert file.min == 0 and file.max == 1

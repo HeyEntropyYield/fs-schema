@@ -72,8 +72,6 @@ def test_private_runtime_names_are_not_reexported() -> None:
 
 def test_bootstrap_helpers_are_private_aliases() -> None:
     private_aliases = (
-        "_BeartypeConf",
-        "_BeartypeStrategy",
         "_beartype_this_package",
         "_version",
     )

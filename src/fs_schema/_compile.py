@@ -252,6 +252,13 @@ def validate_child_shadows(cls: type[Schema]) -> None:
                 raise _invalid_schema(cls.__name__, f"child {name!r} shadows a Schema member")
 
 
+def _declaration_with(node: Node) -> object:
+    def with_(_cls: type[object], /, **changes: object) -> Node:
+        return node.with_(**changes)
+
+    return classmethod(with_)
+
+
 def member_view(cls: type[Schema], name: str, base: type[object], node: Node) -> type[object]:
     raw = vars(cls).get("_member_views")
     if not isinstance(raw, dict):
@@ -271,6 +278,7 @@ def member_view(cls: type[Schema], name: str, base: type[object], node: Node) ->
             "match": node.match,
             "min": node.min,
             "max": node.max,
+            "with_": _declaration_with(node),
         },
     )
     cache[name] = viewed

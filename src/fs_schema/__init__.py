@@ -1,10 +1,6 @@
 import warnings
 from importlib.metadata import version as _version
 
-from beartype import (
-    BeartypeConf as _BeartypeConf,
-    BeartypeStrategy as _BeartypeStrategy,
-)
 from beartype.claw import beartype_this_package as _beartype_this_package
 from beartype.roar import BeartypeDecorHintPep613DeprecationWarning as _Pep613Warning
 
@@ -13,7 +9,7 @@ __version__ = _version("fs-schema")
 # TypeAlias until the minimum is 3.12.
 warnings.filterwarnings("ignore", category=_Pep613Warning)
 
-_beartype_this_package(conf=_BeartypeConf(strategy=_BeartypeStrategy.On))
+_beartype_this_package()
 
 from ._fmt import captures as captures, dt as dt
 from ._ops import (

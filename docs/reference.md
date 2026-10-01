@@ -221,6 +221,24 @@ Dir(
 
 Regex-only collection omits `fmt` and supplies `match` instead.
 
+`with_` copies one child and changes the copy. `optional=True` makes an exact name optional. Subclass the schema and put that copy in a `FILES` list. The other children stay. You do not retype the alias. A new alias on that same filename is rejected.
+
+```python
+class Loaded(fss.Schema):
+    schema = {
+        "receipt": fss.File("receipt.json", schema=Manifest),
+        "note": "note.txt",
+    }
+
+
+class Staged(Loaded):
+    schema = {fss.FILES: [Loaded.receipt.with_(optional=True)]}
+```
+
+```text
+node.with_(**changes) -> Self
+```
+
 ```text
 dt(pattern: str) -> FmtLike
 ```
@@ -431,7 +449,27 @@ dynamic static lookup loses that precision.
 
 ## Creating with schemas
 
-`relative_to` picks a root and fills in the paths. It does not write anything. `create` writes that plan and hands it back. `bind` reads the tree and checks that it matches the schema.
+`relative_to` picks a root and fills in the paths. It does not write anything. `create` writes and returns that same node. A failure raises. The return is never a failure, so `if not node.create(...)` does not catch one.
+
+`bind` returns `MismatchErr` instead of raising. `load` returns an `Exception` instead of raising. That value is true, so `if not load()` does not catch a failed load either.
+
+<details markdown="block">
+<summary>What create raises</summary>
+
+The filesystem:
+
+- `OSError` — the write failed
+- `FileNotFoundError` — the body is a path to copy, and that path is not there
+
+Bad arguments:
+
+- `KeyError` — that name is not a child
+- `TypeError` — the value has the wrong shape. One `(captures, payload)` pair was passed instead of a list. A collection was given one body. Captures are missing. Two names for the same child disagree.
+- `ValueError` — a filename does not match that child
+- `BeartypeCallHintParamViolation` — the value is the wrong Python type
+- `NotFoundLookupError` — a file was given a mapping
+
+</details>
 
 A file argument is whatever `put` accepts. A directory argument names child aliases. Leave an optional child out, or pass `None`, and it stays absent. An unknown alias raises `KeyError`. `create()` with no arguments creates that directory and every required child directory. It does not write files, and it does not create optional directories or collection members.
 

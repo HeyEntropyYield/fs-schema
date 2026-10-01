@@ -128,8 +128,10 @@ def _link(temporary: Path, source: PathIsh, *, hard: bool) -> None:
     match hard:
         case True:
             os.link(source, temporary)
-        case False:  # pragma: no branch
+        case False:
             os.symlink(source, temporary)
+        case _:
+            assert_never(hard)
 
 
 def load(path: PathIsh, decoder: LoadSpec[LoadT]) -> LoadT | Exception:
