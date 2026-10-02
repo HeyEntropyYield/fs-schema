@@ -7,6 +7,9 @@ API by git tag. Signatures: [reference](https://heyentropyyield.github.io/fs-sch
 `FILES: [Loaded.receipt.with_(optional=True)]` changes that one child on a subclass.
 [Defining schemas](https://heyentropyyield.github.io/fs-schema/reference/#declaration-api)
 
+`bind` reports every mismatch it finds in one `MismatchErr`, one line each, instead of stopping at the first.
+[Applying schemas](https://heyentropyyield.github.io/fs-schema/reference/#applying-schemas)
+
 ## v0.7.1
 
 `load(Model)` is the static call. `Loadable` is a file a helper can take. A directory iterates its children.

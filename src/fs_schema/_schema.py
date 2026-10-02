@@ -52,6 +52,8 @@ _Loaded = TypeVar("_Loaded", default=object)
 # Template collections only produce their concrete Match subtype.
 _M_co = TypeVar("_M_co", bound="Match", covariant=True)
 _Default = TypeVar("_Default")
+_MatchT = TypeVar("_MatchT")
+_MatchRes: TypeAlias = tuple[list[_MatchT], list[MismatchErr]]
 
 
 # Section order:
@@ -913,15 +915,34 @@ def _dangling_names(defn: Defn, listing: Sequence[Path]) -> list[str]:
     return names
 
 
+# str(MismatchErr).splitlines() is the failure list, so one message must stay one line.
+# Filenames can contain any of these.
+_LINE_BREAKS = {ord(ch): repr(ch)[1:-1] for ch in "\n\r\v\f\x1c\x1d\x1e\x85\u2028\u2029"}
+
+
+def _mismatch(message: str) -> MismatchErr:
+    return MismatchErr(message.translate(_LINE_BREAKS))
+
+
+def _aggregate(failures: Sequence[MismatchErr]) -> MismatchErr:
+    if len(failures) == 1:
+        return failures[0]
+    return MismatchErr("\n".join(str(failure) for failure in failures))
+
+
 def _bind_children(path: Path, dir_defn: DirDefn, cache: FsCache) -> tuple[BoundChild, ...] | MismatchErr:
     if not path.is_dir():
-        return MismatchErr(f"expected directory: {path}")
+        return _mismatch(f"expected directory: {path}")
 
     children: list[BoundChild] = []
+    failures: list[MismatchErr] = []
     for position, defn in enumerate(dir_defn.defns):
         if is_mismatch(child := _bind_dir_defn(path, position, defn, cache)):
-            return child
-        children.append(child)
+            failures.append(child)
+        else:
+            children.append(child)
+    if failures:
+        return _aggregate(failures)
     return tuple(children)
 
 
@@ -939,24 +960,27 @@ def _bind_dir_defn(path: Path, position: int, defn: Defn, cache: FsCache) -> Bou
         if node.min == 0 and node.name != "." and not target.exists():
             return None
         if node.select(target.name) is None:
-            return MismatchErr(f"fixed basename does not match {node.match!r}: {target}")
+            return _mismatch(f"fixed basename does not match {node.match!r}: {target}")
         if not _is_kind(target, defn):
             kind = "file" if isinstance(defn, File) else "directory"
-            return MismatchErr(f"expected {kind}: {target}")
+            return _mismatch(f"expected {kind}: {target}")
         bound = _bind_fixed(target, defn, cache)
         if node.name == "." and node.min == 0 and is_mismatch(bound):
             return None
         return bound
 
     listing = _listing(path, cache)
-    if is_mismatch(matches := _bind_matches(defn, listing, cache)):
-        return matches
+    matches, failures = _bind_matches(defn, listing, cache)
     count = len(matches)
     if count < node.min or (node.max is not None and count > node.max):
         upper = "unbounded" if node.max is None else str(node.max)
         dangling = _dangling_names(defn, listing)
         suffix = f" (dangling: {', '.join(dangling)})" if dangling else ""
-        return MismatchErr(f"expected {node.min}..{upper} matches for defn {position}, found {count}{suffix}: {path}")
+        failures.append(
+            _mismatch(f"expected {node.min}..{upper} matches for defn {position}, found {count}{suffix}: {path}")
+        )
+    if failures:
+        return _aggregate(failures)
     return Template(path, matches, defn) if node.fmt is not None else Matches(path, matches, defn)
 
 
@@ -1002,58 +1026,58 @@ def _failed_match(node: Node, basename: str) -> MismatchErr | None:
     pattern = node._selector.match_failure(basename)  # pyright: ignore[reportPrivateUsage]
     if pattern is None:
         return None
-    return MismatchErr(f"failed match {pattern!r}: {basename}")
+    return _mismatch(f"failed match {pattern!r}: {basename}")
 
 
-def _bind_file_matches(defn: File[_L], listing: Sequence[Path]) -> list[_FileMatch[_L]] | MismatchErr:
+def _bind_file_matches(defn: File[_L], listing: Sequence[Path]) -> _MatchRes[_FileMatch[_L]]:
     matches: list[_FileMatch[_L]] = []
+    failures: list[MismatchErr] = []
     for target in listing:
         if not _is_kind(target, defn):
             continue
         if is_mismatch(failed := _failed_match(defn, target.name)):
-            if defn.skip_mismatch:
-                continue
-            return failed
+            if not defn.skip_mismatch:
+                failures.append(failed)
+            continue
         if (captures := defn.select(target.name)) is None:
             continue
         matches.append(_FileMatch(target, captures, defn))
-    return _sort_matches(matches, defn)
+    return _sort_matches(matches, defn), failures
 
 
-def _bind_dir_matches(defn: DirDefn, listing: Sequence[Path], cache: FsCache) -> list[_DirMatch] | MismatchErr:
+def _bind_dir_matches(defn: DirDefn, listing: Sequence[Path], cache: FsCache) -> _MatchRes[_DirMatch]:
     matches: list[_DirMatch] = []
+    failures: list[MismatchErr] = []
     match_type = _bound_dir_match_type(defn)
     node = defn.defn
     for target in listing:
         if not _is_kind(target, defn):
             continue
         if is_mismatch(failed := _failed_match(node, target.name)):
-            if node.skip_mismatch:
-                continue
-            return failed
+            if not node.skip_mismatch:
+                failures.append(failed)
+            continue
         if (captures := node.select(target.name)) is None:
             continue
         if is_mismatch(children := _bind_children(target, defn, cache)):
-            if node.skip_mismatch:
-                continue
-            return children
+            if not node.skip_mismatch:
+                failures.append(children)
+            continue
         matches.append(match_type(target, captures, children, defn))
-    return _sort_matches(matches, defn.defn)
+    return _sort_matches(matches, defn.defn), failures
 
 
 @overload
-def _bind_matches(
-    defn: File[_L], listing: Sequence[Path], cache: FsCache
-) -> Sequence[_FileMatch[_L]] | MismatchErr: ...
+def _bind_matches(defn: File[_L], listing: Sequence[Path], cache: FsCache) -> _MatchRes[_FileMatch[_L]]: ...
 
 
 @overload
-def _bind_matches(defn: DirDefn, listing: Sequence[Path], cache: FsCache) -> Sequence[_DirMatch] | MismatchErr: ...
+def _bind_matches(defn: DirDefn, listing: Sequence[Path], cache: FsCache) -> _MatchRes[_DirMatch]: ...
 
 
 def _bind_matches(
     defn: Defn, listing: Sequence[Path], cache: FsCache
-) -> Sequence[_FileMatch[object] | _DirMatch] | MismatchErr:
+) -> tuple[Sequence[_FileMatch[object] | _DirMatch], list[MismatchErr]]:
     return _bind_matches_kind(defn, listing, cache)  # pyright: ignore[reportArgumentType]
 
 
@@ -1065,7 +1089,7 @@ def _bind_matches_kind(  # pyright: ignore[reportRedeclaration]
 
 
 @dispatch
-def _bind_matches_kind(defn: DirDefn, listing: Sequence[Path], cache: FsCache) -> Sequence[_DirMatch] | MismatchErr:
+def _bind_matches_kind(defn: DirDefn, listing: Sequence[Path], cache: FsCache) -> _MatchRes[_DirMatch]:
     return _bind_dir_matches(defn, listing, cache)
 
 

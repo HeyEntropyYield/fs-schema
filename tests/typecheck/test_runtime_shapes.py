@@ -1,6 +1,6 @@
 # Static assert_type fixture: basedpyright checks this module; pytest does not execute check().
 # pyright: reportPrivateUsage=false, reportUnusedParameter=false
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator
 from pathlib import Path
 
 from typing_extensions import assert_type
@@ -71,8 +71,8 @@ def check() -> None:
     assert_type(directories[0], _schema._DirMatch)
     assert_type(directory[0], _schema._ChildView)
     assert_type(iter(directory), Iterator[_schema._ChildView])
-    assert_type(_schema._bind_matches(text_defn, listing, {}), Sequence[_schema._FileMatch[str]] | fss.MismatchErr)
-    assert_type(_schema._bind_matches(dir_defn, listing, {}), Sequence[_schema._DirMatch] | fss.MismatchErr)
+    assert_type(_schema._bind_matches(text_defn, listing, {}), _schema._MatchRes[_schema._FileMatch[str]])
+    assert_type(_schema._bind_matches(dir_defn, listing, {}), _schema._MatchRes[_schema._DirMatch])
     assert_type(_schema._bind_fixed(Path("text"), text_defn, {}), _schema.FixedFile[str])
     assert_type(_schema.plan_fixed(Path("text"), text_defn), _schema.FixedFile[str])
     assert_type(_schema.plan_fixed(Path("directory"), dir_defn), _schema.FixedDir)

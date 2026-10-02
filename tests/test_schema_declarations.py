@@ -104,26 +104,27 @@ def test_skip_mismatch_drops_failed_file_matches_and_bad_directories(tmp_path: P
     (tmp_path / "junk.txt").write_text("b")
     (tmp_path / "notes.md").write_text("c")
     strict = _schema.File(match=r"part-[0-9]+[.]txt", min=0)
-    ignored = _schema._bind_file_matches(strict, list(tmp_path.iterdir()))
-    assert not isinstance(ignored, MismatchErr)
+    ignored, ignored_failures = _schema._bind_file_matches(strict, list(tmp_path.iterdir()))
     assert [match.path.name for match in ignored] == ["part-1.txt"]
+    assert ignored_failures == []
     skipped = _schema.File(match=r"part-[0-9]+[.]txt", min=0, skip_mismatch=True)
-    bound = _schema._bind_file_matches(skipped, list(tmp_path.iterdir()))
-    assert not isinstance(bound, MismatchErr)
+    bound, bound_failures = _schema._bind_file_matches(skipped, list(tmp_path.iterdir()))
     assert [match.path.name for match in bound] == ["part-1.txt"]
+    assert bound_failures == []
 
     shaped = tmp_path / "shaped"
     shaped.mkdir()
     (shaped / "2.txt").write_text("no")
     (shaped / "readme").write_text("ignore")
     fmt_and_match = _schema.File(fmt="{n:d}.txt", match=r"1[.]txt", min=0)
-    assert isinstance(_schema._bind_file_matches(fmt_and_match, list(shaped.iterdir())), MismatchErr)
+    _, shaped_failures = _schema._bind_file_matches(fmt_and_match, list(shaped.iterdir()))
+    assert len(shaped_failures) == 1
     (shaped / "1.txt").write_text("yes")
-    kept = _schema._bind_file_matches(
+    kept, kept_failures = _schema._bind_file_matches(
         _schema.File(fmt="{n:d}.txt", match=r"1[.]txt", min=0, skip_mismatch=True),
         list(shaped.iterdir()),
     )
-    assert not isinstance(kept, MismatchErr)
+    assert kept_failures == []
     assert [match.path.name for match in kept] == ["1.txt"]
 
     class Dated(_schema.Schema):

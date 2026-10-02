@@ -157,7 +157,10 @@ def test_sorting_and_nested_selected_directory_mismatch_propagates(tmp_path: Pat
 
     mismatch = bind_defns(root, defns)
     assert isinstance(mismatch, MismatchErr)
-    assert str(mismatch) == f"expected file: {root / 'run-1' / 'required'}"
+    assert str(mismatch).splitlines() == [
+        f"expected file: {root / 'run-1' / 'required'}",
+        f"expected 2..unbounded matches for defn 2, found 1: {root}",
+    ]
 
     sorted_only = bind_defns(root, defns[:2])
     assert isinstance(sorted_only, FixedDir)
@@ -165,6 +168,105 @@ def test_sorting_and_nested_selected_directory_mismatch_propagates(tmp_path: Pat
     assert isinstance(dates, Template) and isinstance(items, Template)
     assert [match.kwargs["ts"] for match in dates] == [datetime(2024, 1, 1), datetime(2025, 1, 2)]
     assert [match.path.name for match in items] == ["item-1.txt", "item-2.txt"]
+
+
+def test_bind_reports_every_sibling_failure_in_declaration_order(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    _touch(root / "inner", "present")
+    _touch(root, "present")
+    inner = DirDefn(Dir(name="inner"), (File(name="gone-a"), File(name="present"), File(name="gone-b")))
+    defns = (File(name="missing-1"), File(name="present"), inner, File(name="missing-2"))
+
+    mismatch = bind_defns(root, defns)
+    assert isinstance(mismatch, MismatchErr)
+    assert str(mismatch).splitlines() == [
+        f"expected file: {root / 'missing-1'}",
+        f"expected file: {root / 'inner' / 'gone-a'}",
+        f"expected file: {root / 'inner' / 'gone-b'}",
+        f"expected file: {root / 'missing-2'}",
+    ]
+    assert not str(mismatch).endswith("\n")
+
+
+def test_bind_single_failure_is_one_line(tmp_path: Path) -> None:
+    mismatch = bind_defns(tmp_path, (File(name="missing"),))
+    assert isinstance(mismatch, MismatchErr)
+    assert str(mismatch) == f"expected file: {tmp_path / 'missing'}"
+
+
+def test_bind_reports_count_and_member_failures_in_one_directory(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    _touch(root / "run-1", "other")
+    _touch(root / "run-2", "required")
+    _touch(root, "bad.txt", "part-2.txt")
+    run = DirDefn(Dir(fmt="run-{n:d}", min=2), (File(name="required"),))
+    parts = File(fmt="part-{n:d}.txt", match=r"part-1[.]txt", min=1)
+
+    mismatch = bind_defns(root, (run, parts))
+    assert isinstance(mismatch, MismatchErr)
+    assert str(mismatch).splitlines() == [
+        f"expected file: {root / 'run-1' / 'required'}",
+        f"expected 2..unbounded matches for defn 0, found 1: {root}",
+        "failed match 'part-1[.]txt': part-2.txt",
+        f"expected 1..unbounded matches for defn 1, found 0: {root}",
+    ]
+
+
+def test_aggregate_of_aggregates_matches_a_flat_list(tmp_path: Path) -> None:
+    leaves = [_schema._mismatch(f"line {index}") for index in range(4)]
+    nested = _schema._aggregate([_schema._aggregate(leaves[:2]), _schema._aggregate(leaves[2:])])
+    flat = _schema._aggregate(leaves)
+    assert str(nested) == str(flat)
+    assert str(nested).splitlines() == [f"line {index}" for index in range(4)]
+
+    root = tmp_path / "root"
+    root.mkdir()
+    _ = (root / "not-a-dir").write_text("x")
+    (root / "left").mkdir()
+    (root / "right").mkdir()
+    bad = DirDefn(Dir(name="not-a-dir"), (File(name="a"),))
+    left = DirDefn(Dir(name="left"), (File(name="a"), File(name="b")))
+    right = DirDefn(Dir(name="right"), (File(name="a"), File(name="b")))
+    mismatch = bind_defns(root, (bad, left, right))
+    lines = [
+        f"expected directory: {root / 'not-a-dir'}",
+        f"expected file: {root / 'left' / 'a'}",
+        f"expected file: {root / 'left' / 'b'}",
+        f"expected file: {root / 'right' / 'a'}",
+        f"expected file: {root / 'right' / 'b'}",
+    ]
+    built = _schema._aggregate([
+        _schema._mismatch(lines[0]),
+        _schema._aggregate([_schema._mismatch(line) for line in lines[1:3]]),
+        _schema._aggregate([_schema._mismatch(line) for line in lines[3:]]),
+    ])
+    assert isinstance(mismatch, MismatchErr)
+    assert str(mismatch) == str(built)
+    assert str(mismatch).splitlines() == lines
+
+
+def test_bind_flattens_nested_aggregates_from_members(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    (root / "run-1").mkdir(parents=True)
+    (root / "run-2").mkdir()
+    run = DirDefn(Dir(fmt="run-{n:d}", min=0), (File(name="a"), File(name="b")))
+
+    mismatch = bind_defns(root, (run,))
+    assert isinstance(mismatch, MismatchErr)
+    assert str(mismatch).splitlines() == [
+        f"expected file: {root / 'run-1' / 'a'}",
+        f"expected file: {root / 'run-1' / 'b'}",
+        f"expected file: {root / 'run-2' / 'a'}",
+        f"expected file: {root / 'run-2' / 'b'}",
+    ]
+
+
+def test_bind_message_stays_one_line_for_odd_filenames(tmp_path: Path) -> None:
+    odd = "a\nb\u2028c"
+    _touch(tmp_path, odd)
+    mismatch = bind_defns(tmp_path, (File(fmt="{n}", match=r"1", min=0),))
+    assert isinstance(mismatch, MismatchErr)
+    assert str(mismatch).splitlines() == ["failed match '1': a\\nb\\u2028c"]
 
 
 def test_callable_loading_preserves_generic_runtime_declaration(tmp_path: Path) -> None:

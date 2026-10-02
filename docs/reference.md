@@ -279,7 +279,9 @@ planned_delivery = Delivery.relative_to("/srv/incoming/delivery-42")
 validated_from_plan = planned_delivery.bind()
 ```
 
-Bind checks structure and counts now. Ignores extras. First mismatch wins.
+Bind checks structure and counts now. Ignores extras.
+
+When several things are wrong, `bind` returns one `MismatchErr` with one line per problem, in declaration order, so `str(err).splitlines()` lists them all. A single problem is a single line.
 
 ```text
 Schema.bind(root: str | os.PathLike[str]) -> Self | MismatchErr
