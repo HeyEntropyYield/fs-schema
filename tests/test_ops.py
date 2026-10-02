@@ -252,8 +252,9 @@ def test_copy_to_recreates_a_symlink_to_a_directory(tmp_path: Path) -> None:
     _ops.copy_to(src, dest, follow_symlinks=False)
     assert dest.is_symlink()
     assert dest.readlink() == real
-    with pytest.raises(IsADirectoryError):
-        _ops.copy_to(src, tmp_path / "followed", follow_symlinks=True)
+    followed = tmp_path / "followed"
+    _ops.copy_to(src, followed, follow_symlinks=True)
+    assert followed.is_dir() and not followed.is_symlink()
 
 
 def test_beartype_rejects_invalid_operation_inputs(tmp_path: Path) -> None:

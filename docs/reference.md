@@ -604,3 +604,16 @@ fss.copy_to(bound, publish)
 ```
 
 `examples/symlink_copy.py` links each frame, then publishes that tree as regular files.
+
+### Symlinks
+
+A link lets a tree match the schema while the bytes stay somewhere else. `examples/symlink_copy.py` links camera files into a roll, then `copy_to` writes regular files.
+
+Raise an issue if one of these is a problem.
+
+- `bind` and `load` follow a link. The bound path stays the link. A link of the wrong kind, or a dangling link, is `MismatchErr`. An optional dangling link counts as absent.
+- `put` and `File.create` replace a link with a regular file. The file it pointed at is not changed.
+- `Dir.create` writes inside a link to a directory. The link stays. A link to a file, or a dangling link, raises `FileExistsError`.
+- `link_to` replaces a file or a link. It can point at a missing path. It does not replace a real directory.
+- `copy_to(follow_symlinks=True)` writes regular files and directories, including a link that points at a directory. `False` copies the link text unchanged.
+- A link at the destination is replaced, not written through. A dangling link is missing to `exists_opt`.

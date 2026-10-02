@@ -68,7 +68,8 @@ def copy_to(
     # A symlink at dest is the path being replaced. Do not write through it.
     if target.is_symlink():
         target.unlink()
-    if src.is_dir() and not src.is_symlink():
+    # follow=True: a link to a directory is that directory. follow=False keeps the link.
+    if src.is_dir() and (follow_symlinks or not src.is_symlink()):
         _ = copytree(src, target, symlinks=not follow_symlinks, dirs_exist_ok=not clean)
         return
     target.parent.mkdir(parents=True, exist_ok=True)
