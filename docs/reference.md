@@ -281,11 +281,11 @@ validated_from_plan = planned_delivery.bind()
 
 Bind checks structure and counts now. Ignores extras.
 
-When several things are wrong, `bind` returns one `MismatchErr` with one line per problem, in declaration order, so `str(err).splitlines()` lists them all. A single problem is a single line.
+When several things are wrong, `bind` returns one `MismatchErr` with one line per problem, in declaration order, so `str(err).splitlines()` lists them all. A single problem is a single line. `fast=True` stops at the first and does not look at the rest.
 
 ```text
-Schema.bind(root: str | os.PathLike[str]) -> Self | MismatchErr
-SchemaRoot[S].bind() -> S | MismatchErr
+Schema.bind(root: str | os.PathLike[str], *, fast=False) -> Self | MismatchErr
+SchemaRoot[S].bind(*, fast=False) -> S | MismatchErr
 is_mismatch(x: object) -> TypeIs[MismatchErr]
 raise_mismatch(x: T | MismatchErr) -> T
 ```
@@ -575,8 +575,8 @@ The same atomic replace as `put`.
 
 `copy_to` copies a file or directory onto another path.
 Source and destination are paths, path strings, or schema nodes.
-`follow_symlinks=True` writes regular files.
-`follow_symlinks=False` keeps links.
+`follow_symlinks=True` writes regular files and directories, including a link that points at a directory.
+`follow_symlinks=False` copies the link text unchanged.
 `clean=False` copies onto what is already there. Extra names at the destination stay.
 `clean=True` removes the destination first.
 The same path, or one path inside the other, raises `ValueError`.

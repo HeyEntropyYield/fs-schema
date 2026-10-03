@@ -186,6 +186,88 @@ def test_bind_reports_every_sibling_failure_in_declaration_order(tmp_path: Path)
         f"expected file: {root / 'missing-2'}",
     ]
     assert not str(mismatch).endswith("\n")
+    assert str(bind_defns(root, defns, fast=True)) == str(mismatch).splitlines()[0]
+
+
+def test_fast_bind_does_not_visit_later_siblings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    class Pair(Schema):
+        schema = {"a": "a.txt", "b": "b.txt"}
+
+    root = tmp_path / "root"
+    root.mkdir()
+    seen: list[int] = []
+    original = _schema._bind_dir_defn
+
+    def track(
+        path: Path, position: int, defn: _schema.Defn, cache: _schema.FsCache, *, fast: bool = False
+    ) -> _schema.BoundChild | MismatchErr:
+        seen.append(position)
+        return original(path, position, defn, cache, fast=fast)
+
+    monkeypatch.setattr(_schema, "_bind_dir_defn", track)
+    mismatch = Pair.bind(root, fast=True)
+    assert isinstance(mismatch, MismatchErr)
+    assert str(mismatch) == f"expected file: {root / 'a.txt'}"
+    assert seen == [0]
+    assert str(Pair.relative_to(root).bind(fast=True)) == str(mismatch)
+
+
+def test_fast_bind_does_not_open_a_later_collection_member(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    class Runs(Schema):
+        schema = {Dir(fmt="run-{n}", min=0): {"body": "body.txt"}}
+
+    root = tmp_path / "root"
+    _touch(root / "run-1", "other")
+    _touch(root / "run-2", "other")
+    seen: list[Path] = []
+    original = _schema._bind_children
+
+    def track(
+        path: Path, defn: DirDefn, cache: _schema.FsCache, *, fast: bool = False
+    ) -> tuple[_schema.BoundChild, ...] | MismatchErr:
+        seen.append(path)
+        return original(path, defn, cache, fast=fast)
+
+    monkeypatch.setattr(_schema, "_bind_children", track)
+    mismatch = Runs.bind(root, fast=True)
+    assert isinstance(mismatch, MismatchErr)
+    assert str(mismatch) == f"expected file: {root / 'run-1' / 'body.txt'}"
+    assert root / "run-2" not in seen
+
+
+def test_fast_bind_stops_on_the_first_failed_match(tmp_path: Path) -> None:
+    class Files(Schema):
+        schema = {"files": File(fmt="{stem}.txt", match=r"ok-.+", min=0)}
+
+    files = tmp_path / "files"
+    _touch(files, "bad-1.txt", "bad-2.txt")
+    file_mismatch = Files.bind(files, fast=True)
+    assert isinstance(file_mismatch, MismatchErr)
+    assert str(file_mismatch) == "failed match 'ok-.+': bad-1.txt"
+
+    class Dirs(Schema):
+        schema = {Dir(fmt="{stem}", match=r"ok-.+", min=0): {"body": "body.txt"}}
+
+    dirs = tmp_path / "dirs"
+    (dirs / "bad-1").mkdir(parents=True)
+    (dirs / "bad-2").mkdir()
+    dir_mismatch = Dirs.bind(dirs, fast=True)
+    assert isinstance(dir_mismatch, MismatchErr)
+    assert str(dir_mismatch) == "failed match 'ok-.+': bad-1"
+
+
+def test_fast_bind_still_passes_a_skipped_mismatch(tmp_path: Path) -> None:
+    class Bundle(Schema):
+        schema = {
+            "files": File(fmt="{stem}.txt", match=r"ok-.+", skip_mismatch=True, min=0),
+            "need": "need.txt",
+        }
+
+    root = tmp_path / "root"
+    _touch(root, "bad.txt")
+    mismatch = Bundle.bind(root, fast=True)
+    assert isinstance(mismatch, MismatchErr)
+    assert str(mismatch) == f"expected file: {root / 'need.txt'}"
 
 
 def test_bind_single_failure_is_one_line(tmp_path: Path) -> None:
@@ -432,9 +514,11 @@ def test_dir_schema_has_no_runtime_merge_or_second_binding(tmp_path: Path, monke
     original = _schema._bind_children
     visited: list[Path] = []
 
-    def counted(path: Path, defn: DirDefn, cache: _schema.FsCache) -> tuple[_schema.BoundChild, ...] | MismatchErr:
+    def counted(
+        path: Path, defn: DirDefn, cache: _schema.FsCache, *, fast: bool = False
+    ) -> tuple[_schema.BoundChild, ...] | MismatchErr:
         visited.append(path)
-        return original(path, defn, cache)
+        return original(path, defn, cache, fast=fast)
 
     monkeypatch.setattr(_schema, "_bind_children", counted)
     bound = Root.bind(tmp_path / "root")

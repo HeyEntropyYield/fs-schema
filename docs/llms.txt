@@ -8,13 +8,13 @@ Import as `import fs_schema as fss`.
 Core state model:
 
 - `Schema` subclass: layout declaration and validated bound value.
-- `Schema.bind(path)`: validate existing tree; returns schema or `MismatchErr`.
+- `Schema.bind(path, *, fast=False)`: validate existing tree; returns schema or one `MismatchErr`. Several problems are one line each. `fast=True` stops at the first.
 - `Schema.relative_to(path)`: planned paths; returns `SchemaRoot[Schema]`.
 - `SchemaRoot.bind()`: validate written tree and return schema.
 - `File`, `Dir`, `FILES`: layout declaration. Exact names take `optional`. `Parent.child.with_` in a `FILES` list changes that child on a subclass. Collections take `fmt`, `match`, `min`, `max`, `sort`.
 - Attribute/index access: generated, schema-aware traversal.
 - `Match.args`, `Match.kwargs`, `filter`, `find`, `where`, `get`: collection queries and captured-value access.
-- `put`, `create`, `load`, `raise_exn`, `path`: filesystem I/O. Node writes are `create`. `fss.put` writes a temp file and replaces.
+- `put`, `create`, `load`, `raise_exn`, `path`: filesystem I/O. Node writes are `create`. `fss.put` writes a temp file and replaces. `copy_to(follow_symlinks=True)` copies a link to a directory as a directory.
 - Optional Mashumaro integration: dataclass JSON, with an optional `orjson` backend.
 
 `Schema` values are validated filesystem states. `SchemaRoot[T]` values are

@@ -4,11 +4,14 @@ API by git tag. Signatures: [reference](https://heyentropyyield.github.io/fs-sch
 
 ## v0.7.2
 
-`FILES: [Loaded.receipt.with_(optional=True)]` changes that one child on a subclass.
-[Defining schemas](https://heyentropyyield.github.io/fs-schema/reference/#declaration-api)
+`with_` copies a file or directory. `optional=True` makes an exact name optional. A subclass `FILES` list can hold that copy. The original child stays.
+[Declaration API](https://heyentropyyield.github.io/fs-schema/reference/#declaration-api)
 
-`bind` reports every mismatch it finds in one `MismatchErr`, one line each, instead of stopping at the first.
+`bind` reports every mismatch it finds in one `MismatchErr`, one line each. `fast=True` stops at the first.
 [Applying schemas](https://heyentropyyield.github.io/fs-schema/reference/#applying-schemas)
+
+`copy_to(follow_symlinks=True)` copies a link to a directory as a directory. `False` copies the link text.
+[Symlinks](https://heyentropyyield.github.io/fs-schema/reference/#symlinks)
 
 ## v0.7.1
 
