@@ -105,7 +105,7 @@ preview = true
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "RUF"]
-ignore = ["RUF012"]
+ignore = ["RUF012", "E501"] # `# fmt: skip` keeps a line long on purpose
 per-file-ignores = { "src/fs_schema/__init__.py" = ["E402", "I001"] }
 
 [tool.basedpyright]

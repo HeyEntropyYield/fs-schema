@@ -976,9 +976,7 @@ def _bind_dir_defn(path: Path, position: int, defn: Defn, cache: FsCache) -> Bou
         upper = "unbounded" if node.max is None else str(node.max)
         dangling = _dangling_names(defn, listing)
         suffix = f" (dangling: {', '.join(dangling)})" if dangling else ""
-        failures.append(
-            _mismatch(f"expected {node.min}..{upper} matches for defn {position}, found {count}{suffix}: {path}")
-        )
+        failures.append(_mismatch(f"expected {node.min}..{upper} matches for defn {position}, found {count}{suffix}: {path}"))  # fmt: skip
     if failures:
         return _aggregate(failures)
     return Template(path, matches, defn) if node.fmt is not None else Matches(path, matches, defn)
