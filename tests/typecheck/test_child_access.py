@@ -46,3 +46,8 @@ def check(box_path: Path) -> None:
     assert_type(planned.bins.format(slug="y").path, Path)
     assert_type(sorted_box.best[-1].kwargs["epoch"], _fmt.CaptureField)
     assert_type(box.end2end.load(), object | Exception)
+
+    if not (missing := Box.bind(box_path)):
+        assert_type(missing, fss.MismatchErr)
+    else:
+        assert_type(missing, Box)

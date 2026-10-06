@@ -2,6 +2,12 @@
 
 API by git tag. Signatures: [reference](https://heyentropyyield.github.io/fs-schema/reference/).
 
+## v0.7.3
+
+`len` on a fixed directory or a directory match raises `TypeError`. A collection still has a length.
+`if not Schema.bind(path)` is the mismatch.
+[Using schemas](https://heyentropyyield.github.io/fs-schema/reference/#using-schemas)
+
 ## v0.7.2
 
 `with_` copies a file or directory. `optional=True` makes an exact name optional. A subclass `FILES` list can hold that copy. The original child stays.

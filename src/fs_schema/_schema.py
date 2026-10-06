@@ -582,7 +582,7 @@ if TYPE_CHECKING:
 
         def __iter__(self) -> Iterator["_ChildView"]: ...  # FixedDir, Matches, Template, _DirMatch
 
-        def __len__(self) -> int: ...  # FixedDir, Matches, Template, _DirMatch
+        def __len__(self) -> int: ...  # Matches, Template
 
         def __lt__(self, other: object) -> bool: ...  # FixedFile, FixedDir, Matches, Template, _FileMatch, _DirMatch
 
@@ -680,9 +680,6 @@ class FixedDir(_Fixed):
 
     def __next__(self) -> GetChild:
         return next(iter(self))
-
-    def __len__(self) -> int:
-        return len(self._children)
 
     @overload
     def __getitem__(self, index: int) -> GetChild: ...

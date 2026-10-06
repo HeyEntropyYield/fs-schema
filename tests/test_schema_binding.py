@@ -212,6 +212,28 @@ def test_fast_bind_does_not_visit_later_siblings(tmp_path: Path, monkeypatch: py
     assert str(Pair.relative_to(root).bind(fast=True)) == str(mismatch)
 
 
+def test_fixed_and_match_have_no_length(tmp_path: Path) -> None:
+    class Roll(Schema):
+        schema = {
+            "note": "note.txt",
+            "shots": File(fmt="{stem}.png", min=0),
+            Dir(alias="days", fmt="day-{n:d}", min=0): {"note": "note.txt"},
+        }
+
+    root = tmp_path / "root"
+    _touch(root, "note.txt", "a.png")
+    _touch(root / "day-1", "note.txt")
+    bound = Roll.bind(root)
+    assert isinstance(bound, Roll)
+    assert len(bound.days) == 1
+    assert len(bound.shots) == 1
+    with pytest.raises(TypeError):
+        _ = len(bound)  # pyright: ignore[reportArgumentType]
+    for node in (bound.note, bound.days[0], bound.shots[0]):
+        with pytest.raises(TypeError):
+            _ = len(node)
+
+
 def test_fast_bind_does_not_open_a_later_collection_member(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     class Runs(Schema):
         schema = {Dir(fmt="run-{n}", min=0): {"body": "body.txt"}}
@@ -599,7 +621,6 @@ def test_bound_graph_is_immutable_history_and_new_bind_observes_changes(tmp_path
     assert tuple(old) == old_children
     assert tuple(runs) == old_runs
     assert old["nested"] is old.nested
-    assert len(old) == len(old_children)
     assert isinstance(Root.bind(root), MismatchErr)
 
     _touch(root, "fixed")
