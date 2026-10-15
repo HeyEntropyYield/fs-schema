@@ -728,7 +728,23 @@ class _DirMatch(_CaptureState, FixedDir):
         self._captures: ParsedCaptures = captures
 
 
+# A bound fmt directory is a generated class: the child schema plus a capture match.
+# _BOUND_MATCH tells SchemaCls this is not a user schema, so it is not compiled.
 _BOUND_MATCH: Final = "_fs_schema_bound_match"
+_GenT = TypeVar("_GenT", bound=type)
+
+
+def _stored_type(owner: type, slot: str, ok: Callable[[object], bool], build: Callable[[], _GenT]) -> _GenT:
+    # Match and root share this cache: look up a slot, else build once and store it on the class.
+    # The builder differs. A match uses SchemaCls so isinstance sees the schema. A root uses type() so it is not compiled.
+    found = vars(owner).get(slot)
+    if ok(found):
+        return typing.cast(_GenT, found)
+    generated = build()
+    if not ok(generated):
+        raise AssertionError(f"{owner.__name__}.{slot} was not the generated type")
+    type.__setattr__(owner, slot, generated)
+    return generated
 
 
 def _is_bound_dir_match_type(value: object, schema_type: type) -> TypeIs[type[_DirMatch]]:
@@ -739,23 +755,28 @@ def _bound_dir_match_type(defn: DirDefn) -> type[_DirMatch]:
     schema_type = defn.child_type
     if schema_type is None:
         return _DirMatch
-    cached = vars(schema_type).get("_bound_match_type")
-    if _is_bound_dir_match_type(cached, schema_type):
-        return cached
-    generated = SchemaCls(
-        f"{schema_type.__name__}Match",
-        (schema_type, _DirMatch),
-        {
-            "__module__": schema_type.__module__,
-            "__qualname__": f"{schema_type.__qualname__}Match",
-            _BOUND_MATCH: True,
-            "__init__": _DirMatch.__init__,
-        },
+
+    def build() -> type[_DirMatch]:
+        generated = SchemaCls(
+            f"{schema_type.__name__}Match",
+            (schema_type, _DirMatch),
+            {
+                "__module__": schema_type.__module__,
+                "__qualname__": f"{schema_type.__qualname__}Match",
+                _BOUND_MATCH: True,
+                "__init__": _DirMatch.__init__,
+            },
+        )
+        if not _is_bound_dir_match_type(generated, schema_type):
+            raise AssertionError("bound match type must subclass schema and _DirMatch")
+        return generated
+
+    return _stored_type(
+        schema_type,
+        "_bound_match_type",
+        lambda value: _is_bound_dir_match_type(value, schema_type),
+        build,
     )
-    if not _is_bound_dir_match_type(generated, schema_type):
-        raise AssertionError("bound match type must subclass schema and _DirMatch")
-    type.__setattr__(schema_type, "_bound_match_type", generated)
-    return generated
 
 
 ## Plan, format, and create
@@ -1140,7 +1161,9 @@ class SchemaCls(type):
             if "schema" in namespace:
                 raise TypeError(em.Schema.twice(name))
             namespace["schema"] = schema
-        if namespace.get(_BOUND_MATCH) or "Schema" not in globals():
+        # A user schema has a Schema base. class Schema itself does not, and a match sets _BOUND_MATCH.
+        # This does not look at globals, so import order cannot skip the check.
+        if namespace.get(_BOUND_MATCH) or not any(isinstance(base, SchemaCls) for base in bases):
             return super().__new__(metacls, name, bases, namespace, **kwargs)
         from ._compile import validate_schema_bases
 
@@ -1148,32 +1171,9 @@ class SchemaCls(type):
         return super().__new__(metacls, name, bases, namespace, **kwargs)
 
     def __getattr__(cls, name: str) -> type:
-        if name.startswith("_"):
-            raise AttributeError(name)
-        from ._compile import is_schema_type, member_view, schema_defn_for
-
-        if not is_schema_type(cls):
-            raise AttributeError(name)
-        try:
-            root_defn = schema_defn_for(cls)
-            defn = root_defn.defns[root_defn.lookup[name]]
-        except (AssertionError, KeyError):
-            raise AttributeError(name) from None
-        node = defn_node(defn)
-        if name != node.alias and name != normalize_name(node.name):
-            raise AttributeError(name)
-        if node.name:
-            if isinstance(defn, File):
-                base: type[object] = FixedFile
-            else:
-                # _directory_defn always sets child_type. FixedDir here would be a lie.
-                assert defn.child_type is not None  # pragma: no branch
-                return defn.child_type
-        elif node.fmt is not None:
-            base = Template
-        else:
-            base = Matches
-        return member_view(cls, name, base, node)
+        # Installed children are descriptors, so this runs only for a missing name.
+        # The checker uses this return type for a child that is not written in the class body.
+        raise AttributeError(name)
 
     @property
     def RootT(cls) -> "type[SchemaRoot[Schema]]":
@@ -1199,23 +1199,19 @@ def _is_root_type_for(value: object, schema_type: type[_S]) -> TypeIs[type[Schem
 
 
 def _root_type_for(schema_type: type[_S]) -> type[SchemaRoot[_S]]:
-    cached = vars(schema_type).get("_root_type")
-    if _is_root_type_for(cached, schema_type):
-        return cached
+    # relative_to returns SchemaRoot[This]. type() keeps it out of schema compilation.
+    def build() -> type[SchemaRoot[_S]]:
+        return type(
+            f"{schema_type.__name__}Root",
+            (SchemaRoot,),
+            {
+                "__module__": schema_type.__module__,
+                "__qualname__": f"{schema_type.__qualname__}.RootT",
+                "_schema_type": schema_type,
+            },
+        )
 
-    generated = type(
-        f"{schema_type.__name__}Root",
-        (SchemaRoot,),
-        {
-            "__module__": schema_type.__module__,
-            "__qualname__": f"{schema_type.__qualname__}.RootT",
-            "_schema_type": schema_type,
-        },
-    )
-    if not _is_root_type_for(generated, schema_type):
-        raise AssertionError("generated SchemaRoot has an invalid type")
-    type.__setattr__(schema_type, "_root_type", generated)
-    return generated
+    return _stored_type(schema_type, "_root_type", lambda value: _is_root_type_for(value, schema_type), build)
 
 
 class Schema(FixedDir, metaclass=SchemaCls):
@@ -1231,6 +1227,7 @@ class Schema(FixedDir, metaclass=SchemaCls):
         validate_schema_class(cls)
         compile_schema(cls)
         validate_child_shadows(cls)
+        _install_child_attrs(cls)
 
     @classmethod
     def relative_to(cls: type[_S], root: PathIsh) -> "SchemaRoot[_S]":
@@ -1246,3 +1243,57 @@ class Schema(FixedDir, metaclass=SchemaCls):
 
     def root(self) -> "SchemaRoot[Self]":
         return type(self).relative_to(self.path)
+
+
+def _child_attr_names(node: Node) -> tuple[str, ...]:
+    names: list[str] = []
+    if node.alias:
+        names.append(node.alias)
+    if node.name and (normalized := normalize_name(node.name)) not in names:
+        names.append(normalized)
+    return tuple(names)
+
+
+class _DeclAttr:
+    # Class access returns the declaration: the schema class, or a view.
+    # Instance access returns the bound child. A bare class attribute would hide that lookup.
+    def __init__(self, name: str, target: object) -> None:
+        self.name: str = name
+        self.target: object = target
+
+    def __get__(self, instance: FixedDir | None, owner: type[object]) -> object:
+        if instance is None:
+            return self.target
+        return FixedDir.__getattr__(instance, self.name)
+
+
+def _install_child_attrs(cls: type[Schema]) -> None:
+    # Runs once, after shadow checks, when the class is created.
+    # A directory whose value is a schema class is that class.
+    # A file or a repeated name is a view: a generated class with alias, fmt, and with_.
+    # Alias and normalized basename are the same object. Nothing is built again on lookup.
+    from ._compile import member_view, schema_defn_for
+
+    installed: list[str] = []
+    for defn in schema_defn_for(cls).defns:
+        node = defn_node(defn)
+        names = _child_attr_names(node)
+        if not names:
+            continue
+        if node.name and isinstance(defn, File):
+            target: object = member_view(cls, FixedFile, node)
+        elif node.name and isinstance(defn, DirDefn):
+            # An exact directory's child class is set when the directory is compiled.
+            child_type = defn.child_type
+            if child_type is None:
+                raise AssertionError("exact directory has no child class")
+            target = child_type
+        elif node.fmt is not None:
+            target = member_view(cls, Template, node)
+        else:
+            target = member_view(cls, Matches, node)
+        for name in names:
+            type.__setattr__(cls, name, _DeclAttr(name, target))
+        installed.extend(names)
+    # Shadow checks ignore these names on a parent, so a subclass can declare the same child.
+    type.__setattr__(cls, "_child_attrs", frozenset(installed))

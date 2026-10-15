@@ -247,14 +247,25 @@ def compile_schema(cls: type[Schema]) -> None:
         raise _invalid_schema(cls.__name__, str(error)) from error
 
 
+def _installed_child_names(ancestor: type) -> frozenset[str]:
+    raw = vars(ancestor).get("_child_attrs")
+    if isinstance(raw, frozenset):
+        return typing.cast(frozenset[str], raw)
+    return frozenset()
+
+
 def validate_child_shadows(cls: type[Schema]) -> None:
     for defn in schema_defn_for(cls).defns:
         node = defn_node(defn)
         for name in (node.alias or None, normalize_name(node.name) if node.name else None):
-            if name is not None and (
-                name in _CAPTURE_MEMBERS
-                or any(name in ancestor.__dict__ for ancestor in (*cls.__mro__, *type(cls).__mro__))
-            ):
+            if name is None:
+                continue
+            # An installed child on a parent is that child, not a reserved member.
+            reserved = name in _CAPTURE_MEMBERS or any(
+                name in ancestor.__dict__ and name not in _installed_child_names(ancestor)
+                for ancestor in (*cls.__mro__, *type(cls).__mro__)
+            )
+            if reserved:
                 raise _invalid_schema(cls.__name__, em.Schema.Body.shadow(name))
 
 
@@ -265,16 +276,11 @@ def _declaration_with(node: Node) -> object:
     return classmethod(with_)
 
 
-def member_view(cls: type[Schema], name: str, base: type[object], node: Node) -> type[object]:
-    raw = vars(cls).get("_member_views")
-    if not isinstance(raw, dict):
-        raw = {}
-        type.__setattr__(cls, "_member_views", raw)
-    cache = typing.cast(dict[str, type[object]], raw)
-    cached = cache.get(name)
-    if isinstance(cached, type):
-        return cached
-    viewed = type(
+def member_view(cls: type[Schema], base: type[object], node: Node) -> type[object]:
+    # A view is a generated class, not the user's schema class.
+    # It carries alias, fmt, match, min, max, and with_ for one file or one repeated name.
+    # The schema class stores it as a real attribute, so lookup does not build another one.
+    return type(
         base.__name__,
         (base,),
         {
@@ -287,5 +293,3 @@ def member_view(cls: type[Schema], name: str, base: type[object], node: Node) ->
             "with_": _declaration_with(node),
         },
     )
-    cache[name] = viewed
-    return viewed
