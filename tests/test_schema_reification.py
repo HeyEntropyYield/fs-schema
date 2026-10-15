@@ -1,5 +1,6 @@
 # pyright: reportPrivateUsage=false, reportArgumentType=false, reportUnknownMemberType=false
 # pyright: reportUnknownArgumentType=false, reportUnknownVariableType=false, reportUnknownLambdaType=false
+import re
 from collections.abc import Iterator
 from pathlib import Path
 from typing import ClassVar
@@ -7,6 +8,7 @@ from typing import ClassVar
 import pytest
 
 from fs_schema import FILES, Dir, File, MismatchErr, Schema
+from fs_schema import _errmsg as em
 from fs_schema._schema import _BOUND_MATCH, DirDefn, FixedFile, Matches, SchemaCls, Template
 
 
@@ -61,23 +63,25 @@ def test_reifies_each_raw_grammar_branch_and_stable_class_navigation() -> None:
     ],
 )
 def test_invalid_layouts_fail_at_class_creation_with_context(layout: object) -> None:
-    with pytest.raises(TypeError, match=r"Invalid[.]schema"):
+    with pytest.raises(TypeError, match=re.escape(em.Schema.text("Invalid", ""))):
         _define(layout)
 
 
 def test_invalid_dir_schema_is_reported_at_containing_class_creation() -> None:
     invalid = Dir("bad")
     object.__setattr__(invalid, "schema", object)
-    with pytest.raises(TypeError, match=r"Invalid[.]schema declaration .* Dir[.]schema must be a Schema subclass"):
+    with pytest.raises(
+        TypeError, match=re.escape(em.Schema.text("Invalid", em.Schema.Body.decl(invalid, em.Schema.Body.DIR_SCHEMA)))
+    ):
         _define({invalid: {}})
 
 
 def test_files_is_list_only_uses_singleton_identity_and_reports_bad_member() -> None:
-    with pytest.raises(TypeError, match=r"key FILES requires a list"):
+    with pytest.raises(TypeError, match=re.escape(em.Schema.text("Invalid", em.Schema.Body.files(FILES)))):
         _define({FILES: ("bad",)})
-    with pytest.raises(TypeError, match=r"key FILES member 42 must be a str or File"):
+    with pytest.raises(TypeError, match=re.escape(em.Schema.text("Invalid", em.Schema.Body.str_or_file(FILES, 42)))):
         _define({FILES: [42]})
-    with pytest.raises(TypeError, match=r"invalid entry at key FILES"):
+    with pytest.raises(TypeError, match=re.escape(em.Schema.text("Invalid", em.Schema.Body.invalid(type(FILES)())))):
         _define({type(FILES)(): []})
 
 
@@ -218,8 +222,11 @@ def test_dir_schema_rejects_missing_or_unequal_required_declarations(rhs: object
     class Required(Schema):
         schema = {"note": "note.txt", "nested": {"leaf": "leaf.txt"}}
 
-    with pytest.raises(TypeError, match=r"Invalid[.]schema declaration .* RHS does not satisfy Dir[.]schema"):
-        _define({Dir("candidate", schema=Required): rhs})
+    node = Dir("candidate", schema=Required)
+    with pytest.raises(
+        TypeError, match=re.escape(em.Schema.text("Invalid", em.Schema.Body.decl(node, em.Schema.Body.RHS)))
+    ):
+        _define({node: rhs})
 
 
 def test_dir_schema_preserves_anonymous_requirement_multiplicity() -> None:
@@ -229,8 +236,11 @@ def test_dir_schema_preserves_anonymous_requirement_multiplicity() -> None:
     class Candidate(Schema):
         schema = {FILES: [File(match="same")]}
 
-    with pytest.raises(TypeError, match=r"Invalid[.]schema declaration .* RHS does not satisfy Dir[.]schema"):
-        _define({Dir("candidate", schema=Required): Candidate})
+    node = Dir("candidate", schema=Required)
+    with pytest.raises(
+        TypeError, match=re.escape(em.Schema.text("Invalid", em.Schema.Body.decl(node, em.Schema.Body.RHS)))
+    ):
+        _define({node: Candidate})
 
 
 def test_dir_schema_accepts_recursive_anonymous_requirements_with_extra_children() -> None:
@@ -258,7 +268,7 @@ def test_repeated_class_navigation_is_not_a_reusable_schema_declaration() -> Non
         schema = {Dir(fmt="part-{n:d}", alias="items"): {}}
 
     assert issubclass(Parent.items, Template)
-    with pytest.raises(TypeError, match=r"Invalid[.]schema invalid entry at key 'reused'"):
+    with pytest.raises(TypeError, match=re.escape(em.Schema.text("Invalid", em.Schema.Body.invalid("reused")))):
         _define({"reused": Parent.items})
 
 
@@ -293,27 +303,28 @@ def test_schema_policy_allows_passive_metadata_but_protects_critical_behavior() 
         "navigation": {"__getitem__": lambda self, key: None},
     }
     for role, namespace in critical.items():
-        with pytest.raises(TypeError, match=f"Bad_{role}"):
+        name = next(iter(namespace))
+        with pytest.raises(TypeError, match=re.escape(em.Schema.override(f"Bad_{role}", name))):
             type(f"Bad_{role}", (Schema,), {"__module__": __name__, **namespace})
 
 
 @pytest.mark.parametrize("name", ["args", "kwargs"])
 def test_schema_policy_reserves_match_members(name: str) -> None:
-    with pytest.raises(TypeError, match=rf"CaptureMember Schema declaration cannot override '{name}'"):
+    with pytest.raises(TypeError, match=re.escape(em.Schema.override("CaptureMember", name))):
         type("CaptureMember", (Schema,), {name: object()})
 
 
 @pytest.mark.parametrize(
-    "layout",
+    ("layout", "name"),
     [
-        {FILES: [File("args")]},
-        {FILES: [File("value", alias="kwargs")]},
-        {"bind": "value"},
-        {FILES: [File("path")]},
+        ({FILES: [File("args")]}, "args"),
+        ({FILES: [File("value", alias="kwargs")]}, "kwargs"),
+        ({"bind": "value"}, "bind"),
+        ({FILES: [File("path")]}, "path"),
     ],
 )
-def test_schema_policy_rejects_reserved_navigation_names(layout: object) -> None:
-    with pytest.raises(TypeError, match=r"Reserved[.]schema child .* shadows a Schema member"):
+def test_schema_policy_rejects_reserved_navigation_names(layout: object, name: str) -> None:
+    with pytest.raises(TypeError, match=re.escape(em.Schema.text("Reserved", em.Schema.Body.shadow(name)))):
         type("Reserved", (Schema,), {"schema": layout})
 
 
@@ -324,9 +335,9 @@ def test_schema_policy_rejects_mixins_multiple_inheritance_and_custom_metaclass(
         def __init_subclass__(cls) -> None:
             events.append(cls.__name__)  # pragma: no cover
 
-    with pytest.raises(TypeError, match="exactly one direct Schema base"):
+    with pytest.raises(TypeError, match=re.escape(em.Schema.one_base("BadLeft"))):
         type("BadLeft", (Mixin, Schema), {})
-    with pytest.raises(TypeError, match="exactly one direct Schema base"):
+    with pytest.raises(TypeError, match=re.escape(em.Schema.one_base("BadRight"))):
         type("BadRight", (Schema, Mixin), {})
 
     class Left(Schema):
@@ -335,14 +346,14 @@ def test_schema_policy_rejects_mixins_multiple_inheritance_and_custom_metaclass(
     class Right(Schema):
         pass
 
-    with pytest.raises(TypeError, match="exactly one direct Schema base"):
+    with pytest.raises(TypeError, match=re.escape(em.Schema.one_base("Diamond"))):
         type("Diamond", (Left, Right), {})
     assert events == []
 
     class CustomMeta(type(Schema)):
         pass
 
-    with pytest.raises(TypeError, match="exact Schema metaclass"):
+    with pytest.raises(TypeError, match=re.escape(em.Schema.metaclass("BadMeta"))):
         CustomMeta("BadMeta", (Schema,), {})
 
     odd = SchemaCls("Odd", (object,), {_BOUND_MATCH: True})
@@ -368,7 +379,7 @@ def test_schema_policy_rejects_mixins_multiple_inheritance_and_custom_metaclass(
 def test_name_alias_normalized_and_format_collisions_fail_at_class_creation(
     first: File[object], second: File[object], collision: str
 ) -> None:
-    with pytest.raises(TypeError, match=rf"Invalid[.]schema duplicate child key: {collision!r}"):
+    with pytest.raises(TypeError, match=re.escape(em.Schema.text("Invalid", em.Layout.duplicate(collision)))):
         _define({FILES: [first, second]})
 
 
@@ -395,7 +406,7 @@ def test_inherited_identity_overrides_are_permissive_but_effective_collisions_fa
     assert Override._schema_defn.defns[0].match == "derived"  # pyright: ignore[reportAttributeAccessIssue]
     assert Override._schema_defn.defns[2].min == 0  # pyright: ignore[reportAttributeAccessIssue]
 
-    with pytest.raises(TypeError, match="duplicate child key: 'aliased'"):
+    with pytest.raises(TypeError, match=re.escape(em.Schema.text("Collision", em.Layout.duplicate("aliased")))):
         type(
             "Collision",
             (Override,),
@@ -441,7 +452,7 @@ def test_files_with_overrides_one_child(tmp_path: Path) -> None:
     assert present.receipt is not None
     assert present.receipt.read_text() == "{}"
 
-    with pytest.raises(TypeError, match="duplicate child key"):
+    with pytest.raises(TypeError, match=re.escape(em.Schema.text("Misspelled", em.Layout.duplicate("receipt.json")))):
         _ = type("Misspelled", (Loaded,), {"schema": {"reciept": copied}})
 
 

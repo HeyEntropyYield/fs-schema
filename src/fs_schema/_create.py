@@ -7,6 +7,8 @@ from typing import TypeAlias, final
 from plum import dispatch
 from typing_extensions import TypeIs
 
+import fs_schema._errmsg as em
+
 from ._fmt import Captures, FmtField, captures
 from ._schema import (
     Defn,
@@ -72,7 +74,7 @@ def _spec_entry(lookup: Mapping[str, int], spec: Mapping[str, CreateTop], index:
         return _ABSENT
     first = spec[keys[0]]
     if any(spec[key] != first for key in keys[1:]):
-        raise TypeError(f"create keys {keys} name one child")
+        raise TypeError(em.Create.one_child(keys))
     return first
 
 
@@ -121,28 +123,24 @@ def _dispatch_collection(template: Matches[Match, Defn], defn: Defn, key: str, v
         return
     if _is_member_seq(value):
         if _is_member(value):
-            raise TypeError(f"{key!r} value is one (captures, payload) pair; pass a list of pairs")
+            raise TypeError(em.Create.pair(key))
         if defn_node(defn).fmt is None:
-            raise TypeError(f"{key!r} has no formatter; pass a basename mapping")
+            raise TypeError(em.Create.names(key))
         if not isinstance(template, Template):
             raise AssertionError("formatted collection")
         _fill_collection(template, defn, key, value)
         return
-    raise TypeError(f"{key!r} is a collection; pass a basename mapping or (captures, payload) pairs")
+    raise TypeError(em.Create.collection(key))
 
 
 def _fill_stamped_file(template: Matches[Match, Defn], defn: File[object], key: str, body: Puttable) -> None:
     node = defn_node(defn)
     names = capture_names(defn)
     if node.fmt is None or not isinstance(template, Template):
-        raise TypeError(f"{key!r} is a collection; pass a basename mapping or (captures, payload) pairs")
+        raise TypeError(em.Create.collection(key))
     missing = names - template.stamps.keys()
     if missing:
-        stamped = sorted(names & template.stamps.keys())
-        detail = f"missing captures {sorted(missing)}"
-        if stamped:
-            detail += f"; already stamped {stamped}"
-        raise TypeError(f"{key!r} is a file collection; {detail}; pass (captures, payload) pairs")
+        raise TypeError(em.Create.file(key, sorted(missing), sorted(names & template.stamps.keys())))
     created = format_any(template, **{name: template.stamps[name] for name in names})
     if not isinstance(created, FixedFile):
         raise AssertionError("file collection planned a directory")
@@ -180,8 +178,7 @@ def _fill_named(
     node = defn_node(defn)
     for name, body in value.items():
         if node.select(name) is None or not is_safe_basename(name):
-            hint = "; keys are filenames, not captures" if name in names else ""
-            raise ValueError(f"{key!r} member {name!r} does not match{hint}")
+            raise ValueError(em.Create.member(key, name, filenames=name in names))
         _write_formatted(defn, plan_fixed(template.path / name, defn), body)  # pyright: ignore[reportArgumentType]
 
 

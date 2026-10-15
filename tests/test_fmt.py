@@ -5,6 +5,7 @@ from typing import get_args
 import pytest
 from beartype.roar import BeartypeCallHintParamViolation
 
+from fs_schema import _errmsg as em
 from fs_schema import _fmt
 
 
@@ -105,7 +106,7 @@ def test_invalid_strftime_directives_are_plain_string_formats() -> None:
 
 def test_time_only_capture_fails_at_parse_boundary() -> None:
     compiled = _fmt.CompiledFormat("{value:%H:%M}")
-    with pytest.raises(TypeError, match="time captures"):
+    with pytest.raises(TypeError, match=em.Fmt.TIME):
         compiled.parse("19:51")
 
 

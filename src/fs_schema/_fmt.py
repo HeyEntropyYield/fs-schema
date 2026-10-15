@@ -11,6 +11,8 @@ from beartype.typing import Protocol
 from parse import Parser
 from typing_extensions import assert_never, override
 
+import fs_schema._errmsg as em
+
 FmtLike: TypeAlias = str
 # A parsed template field: {n:d} -> int, {stem} -> str, dt() -> datetime.
 FmtField: TypeAlias = str | int | datetime
@@ -127,7 +129,7 @@ def _capture_value(value: _ParserField) -> FmtField:
         case str() | int():
             return value
         case time():
-            raise TypeError("time captures are unsupported")
+            raise TypeError(em.Fmt.TIME)
         case _:
             assert_never(value)
 

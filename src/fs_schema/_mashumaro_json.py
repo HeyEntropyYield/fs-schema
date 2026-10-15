@@ -6,6 +6,8 @@ from typing import TypeVar, cast
 
 from typing_extensions import Protocol, runtime_checkable
 
+import fs_schema._errmsg as em
+
 from ._types import DataclassInstance
 
 _T = TypeVar("_T")
@@ -28,7 +30,7 @@ def _json_codecs(model: type[_T]) -> tuple[_Encoder[_T], _Decoder[_T]]:
         from mashumaro.codecs.json import JSONDecoder, JSONEncoder
     except ModuleNotFoundError as error:
         if error.name == "mashumaro":
-            raise TypeError("JSON dataclass conversion requires fs-schema[mashumaro]") from error
+            raise TypeError(em.Json.EXTRA) from error
         raise
 
     try:
@@ -47,12 +49,12 @@ def _json_codecs(model: type[_T]) -> tuple[_Encoder[_T], _Decoder[_T]]:
 
 def _check_json(path: Path) -> None:
     if path.suffix.casefold() != ".json":
-        raise TypeError(f"dataclass conversion requires a .json file, got {path.suffix or '<no suffix>'!r}")
+        raise TypeError(em.Json.suffix(path.suffix or "<no suffix>"))
 
 
 def _check_model(model: type[object]) -> None:
     if not is_dataclass(model):
-        raise TypeError(f"declared model {model.__name__} is not a dataclass")
+        raise TypeError(em.Json.model(model.__name__))
 
 
 def decode_json(path: Path, model: type[_T]) -> _T:

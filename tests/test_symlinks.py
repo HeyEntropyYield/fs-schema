@@ -2,6 +2,7 @@
 # pyright: reportUnknownMemberType=false, reportUnknownArgumentType=false
 # pyright: reportUnknownVariableType=false, reportArgumentType=false
 # Pins what soft links do today for every filesystem operation. It is a record, not a policy.
+import re
 import shutil
 from pathlib import Path
 from typing import NamedTuple
@@ -10,6 +11,7 @@ import pytest
 
 import fs_schema as fss
 from fs_schema import Dir, File, MismatchErr, Schema, _ops
+from fs_schema import _errmsg as em
 
 
 def _read_text(path: Path) -> str:
@@ -262,24 +264,22 @@ def test_bind_chains_through_a_link_to_a_link(world: World) -> None:
 
 
 @pytest.mark.parametrize(
-    ("link", "target", "message"),
+    ("link", "target", "kind"),
     [
-        ("note.txt", "real_dir", "expected file: {root}/note.txt"),
-        ("sub", "real", "expected directory: {root}/sub"),
-        ("note.txt", "gone", "expected file: {root}/note.txt"),
-        ("sub", "gone", "expected directory: {root}/sub"),
+        ("note.txt", "real_dir", "file"),
+        ("sub", "real", "directory"),
+        ("note.txt", "gone", "file"),
+        ("sub", "gone", "directory"),
     ],
 )
-def test_bind_rejects_a_wrong_kind_or_dangling_fixed_symlink(
-    world: World, link: str, target: str, message: str
-) -> None:
+def test_bind_rejects_a_wrong_kind_or_dangling_fixed_symlink(world: World, link: str, target: str, kind: str) -> None:
     (world.root / "note.txt").symlink_to(world.real)
     (world.root / "sub").symlink_to(world.real_dir)
     (world.root / link).unlink()
     (world.root / link).symlink_to(_target(world, target))
     err = Tree.bind(world.root)
     assert isinstance(err, MismatchErr)
-    assert str(err) == message.format(root=world.root)
+    assert str(err) == em.Bind.expected(kind, world.root / link)
 
 
 def test_bind_treats_an_optional_dangling_symlink_as_absent(world: World) -> None:
@@ -291,17 +291,17 @@ def test_bind_treats_an_optional_dangling_symlink_as_absent(world: World) -> Non
 
 
 @pytest.mark.parametrize(
-    ("link", "target", "message"),
+    ("link", "target", "kind"),
     [
-        ("note.txt", "real_dir", "expected file: {root}/note.txt"),
-        ("sub", "real", "expected directory: {root}/sub"),
+        ("note.txt", "real_dir", "file"),
+        ("sub", "real", "directory"),
     ],
 )
-def test_bind_rejects_an_optional_symlink_of_the_wrong_kind(world: World, link: str, target: str, message: str) -> None:
+def test_bind_rejects_an_optional_symlink_of_the_wrong_kind(world: World, link: str, target: str, kind: str) -> None:
     (world.root / link).symlink_to(_target(world, target))
     err = Loose.bind(world.root)
     assert isinstance(err, MismatchErr)
-    assert str(err) == message.format(root=world.root)
+    assert str(err) == em.Bind.expected(kind, world.root / link)
 
 
 def test_bind_file_collection_keeps_live_file_symlinks_only(world: World) -> None:
@@ -332,7 +332,7 @@ def test_bind_directory_collection_member_with_a_dangling_child_mismatches(world
     (member / "inner.txt").symlink_to(world.gone)
     err = Subs.bind(world.root)
     assert isinstance(err, MismatchErr)
-    assert str(err) == f"expected file: {member / 'inner.txt'}"
+    assert str(err) == em.Bind.file(member / "inner.txt")
 
 
 def test_bind_names_dangling_symlinks_in_a_count_mismatch(world: World) -> None:
@@ -340,7 +340,7 @@ def test_bind_names_dangling_symlinks_in_a_count_mismatch(world: World) -> None:
     (world.root / "c.png").symlink_to(world.real_dir)
     err = NeedPic.bind(world.root)
     assert isinstance(err, MismatchErr)
-    assert str(err) == f"expected 1..unbounded matches for defn 0, found 0 (dangling: b.png): {world.root}"
+    assert str(err) == em.Bind.count(low=1, high=None, position=0, found=0, dangling=["b.png"], path=world.root)
 
 
 @pytest.mark.parametrize("points_at", ["real", "gone"])
@@ -349,7 +349,7 @@ def test_bind_rejects_a_root_symlink_that_is_not_a_live_directory(world: World, 
     link.symlink_to(world.real if points_at == "real" else world.gone)
     err = Inner.bind(link)
     assert isinstance(err, MismatchErr)
-    assert str(err) == f"expected directory: {link}"
+    assert str(err) == em.Bind.directory(link)
 
 
 # exists_opt, exists, reading the bound path
@@ -553,7 +553,7 @@ def test_copy_to_writes_into_a_symlinked_dest_parent(world: World) -> None:
 def test_copy_to_refuses_a_dest_that_is_a_symlink_to_the_source(world: World) -> None:
     dest = world.root / "dest.txt"
     dest.symlink_to(world.real)
-    with pytest.raises(ValueError, match="onto itself"):
+    with pytest.raises(ValueError, match=re.escape(em.Copy.onto(dest))):
         fss.copy_to(world.real, dest)
     assert dest.is_symlink()
     assert world.real.read_text() == "body"
@@ -562,7 +562,7 @@ def test_copy_to_refuses_a_dest_that_is_a_symlink_to_the_source(world: World) ->
 def test_copy_to_refuses_a_dest_reached_through_a_symlink_into_the_source(world: World) -> None:
     inside = world.root / "inside"
     inside.symlink_to(world.real_dir)
-    with pytest.raises(ValueError, match="onto itself"):
+    with pytest.raises(ValueError, match=re.escape(em.Copy.onto(inside / "nested"))):
         fss.copy_to(world.real_dir, inside / "nested")
     assert _kinds(world.real_dir) == {"inner.txt": "file"}
 

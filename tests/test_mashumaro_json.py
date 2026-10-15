@@ -2,6 +2,7 @@
 # pyright: reportAttributeAccessIssue=false, reportCallIssue=false
 # pyright: reportUnknownArgumentType=false, reportArgumentType=false, reportIndexIssue=false, reportAny=false
 import builtins
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from mashumaro.mixins.orjson import DataClassORJSONMixin
 from typing_extensions import assert_type
 
 import fs_schema as fss
+from fs_schema import _errmsg as em
 from fs_schema import _mashumaro_json, _schema
 
 
@@ -46,7 +48,7 @@ def test_plain_and_mixin_dataclasses_round_trip(tmp_path: Path) -> None:
     assert fss.raise_exn(bound.fixed.load()) == Manifest("fixed", [Child(2)])
     assert fss.raise_exn(bound.fixed.load(Manifest)) == Manifest("fixed", [Child(2)])
     assert bound.fixed.load(object) == Manifest("fixed", [Child(2)])
-    with pytest.raises(TypeError, match="not a subclass of MixinModel"):
+    with pytest.raises(TypeError, match=re.escape(em.Load.subclass(bound.fixed.path, "Manifest", "MixinModel"))):
         bound.fixed.load(MixinModel)
     assert fss.raise_exn(bound.matched[0].load()) == Manifest("matched", [Child(3)])
     assert fss.raise_exn(bound.matched[0].load(Manifest)) == Manifest("matched", [Child(3)])
@@ -96,7 +98,7 @@ def test_missing_mashumaro_error_names_extra(monkeypatch: pytest.MonkeyPatch) ->
     with monkeypatch.context() as import_patch:
         import_patch.setattr(builtins, "__import__", without_mashumaro)
         assert without_mashumaro("json").__name__ == "json"
-        with pytest.raises(TypeError, match=r"fs-schema\[mashumaro\]"):
+        with pytest.raises(TypeError, match=re.escape(em.Json.EXTRA)):
             _mashumaro_json._json_codecs(Manifest)
 
 
@@ -133,7 +135,7 @@ def test_json_validation_errors_leave_created_parent(tmp_path: Path) -> None:
         value: int
 
     target = tmp_path / "nested" / "value.txt"
-    with pytest.raises(TypeError, match=r"requires a [.]json file"):
+    with pytest.raises(TypeError, match=re.escape(em.Json.suffix(".txt"))):
         fss.put(target, NotJson(1))
     assert target.parent.is_dir()
     assert not target.exists()
@@ -142,7 +144,7 @@ def test_json_validation_errors_leave_created_parent(tmp_path: Path) -> None:
     wrong_model.create(Manifest("value"))
     error = wrong_model.load()
     assert isinstance(error, TypeError)
-    assert "declared model int is not a dataclass" in str(error)
+    assert em.Json.model("int") in str(error)
 
 
 def test_declared_model_keeps_generic_load_type() -> None:

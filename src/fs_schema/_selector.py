@@ -1,6 +1,8 @@
 import re
 from typing import Final
 
+import fs_schema._errmsg as em
+
 from ._fmt import CaptureMap, CompiledFormat, FmtField, FmtLike, ParsedCaptures
 
 
@@ -32,10 +34,10 @@ class Selector:
 
     def format(self, *args: FmtField, **kwargs: FmtField) -> str:
         if self._fmt is None:
-            raise TypeError("declaration has no formatter")
+            raise TypeError(em.Fmt.NONE)
         basename = self._fmt.format(*args, **kwargs)
         if self._match is not None and self._match.fullmatch(basename) is None:
-            raise ValueError(f"formatted basename does not match {self._match.pattern!r}: {basename!r}")
+            raise ValueError(em.Fmt.pattern(self._match.pattern, basename))
         return basename
 
     def capture_names(self) -> frozenset[str]:

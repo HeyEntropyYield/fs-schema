@@ -1,8 +1,10 @@
+import re
 from pathlib import Path
 
 import pytest
 
 import fs_schema as fss
+from fs_schema import _errmsg as em
 from fs_schema._schema import DirDefn, File, Schema
 
 
@@ -40,9 +42,11 @@ def test_alias_equal_to_normalized_name_is_one_child() -> None:
 
 
 def test_same_dir_requires_alias_and_rejects_match() -> None:
-    with pytest.raises(TypeError, match=r"Dir\('\.'\) requires alias"):
-        type("Bare", (fss.Schema,), {"schema": {fss.Dir("."): Letter}})
-    with pytest.raises(ValueError, match="cannot take match"):
+    dot = fss.Dir(".")  # pyright: ignore[reportUnknownVariableType]
+    detail = em.Schema.Body.decl(dot, em.Node.DOT_ALIAS)  # pyright: ignore[reportUnknownArgumentType]
+    with pytest.raises(TypeError, match=re.escape(em.Schema.text("Bare", detail))):
+        type("Bare", (fss.Schema,), {"schema": {dot: Letter}})
+    with pytest.raises(ValueError, match=re.escape(em.Node.DOT_MATCH)):
         fss.Dir(".", alias="letter", match=".*")
 
 
@@ -93,7 +97,7 @@ def test_optional_same_dir_skips_a_mismatch(tmp_path: Path) -> None:
 
 
 def test_two_same_dirs_cannot_share_an_alias() -> None:
-    with pytest.raises(TypeError, match="duplicate child key: 'notes'"):
+    with pytest.raises(TypeError, match=re.escape(em.Schema.text("Dup", em.Layout.duplicate("letter")))):
         type(
             "Dup",
             (fss.Schema,),
@@ -102,5 +106,5 @@ def test_two_same_dirs_cannot_share_an_alias() -> None:
 
 
 def test_dir_defn_same_dir_without_alias_raises() -> None:
-    with pytest.raises(ValueError, match="requires alias"):
+    with pytest.raises(ValueError, match=re.escape(em.Node.DOT_ALIAS)):
         DirDefn(fss.Dir("keep"), (DirDefn(fss.Dir(".")),))

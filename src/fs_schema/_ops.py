@@ -7,6 +7,8 @@ from typing import Literal, TypeVar, cast
 
 from typing_extensions import TypeIs, assert_never
 
+import fs_schema._errmsg as em
+
 from ._mashumaro_json import decode_json, encode_json
 from ._types import DataclassInstance, HasSave, LoadSpec, LoadT, PathIsh, Puttable
 
@@ -59,7 +61,7 @@ def copy_to(
     src = Path(source)
     target = Path(dest)
     if _overlaps(src, target):
-        raise ValueError(f"refusing to copy onto itself: {target}")
+        raise ValueError(em.Copy.onto(target))
     if clean and (target.exists() or target.is_symlink()):
         if target.is_dir() and not target.is_symlink():
             rmtree(target)

@@ -3,6 +3,7 @@
 # pyright: reportAttributeAccessIssue=false, reportCallIssue=false
 # pyright: reportArgumentType=false, reportAssignmentType=false
 # pyright: reportOptionalMemberAccess=false, reportIndexIssue=false
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from beartype.roar import BeartypeCallHintParamViolation
 from plum import NotFoundLookupError
 
 from fs_schema import Dir, File, Schema, captures
+from fs_schema import _errmsg as em
 
 
 class Batch(Schema):
@@ -83,7 +85,7 @@ def test_create_without_data_touches_a_file(tmp_path: Path) -> None:
 def test_bound_schema_create_requires_root(tmp_path: Path) -> None:
     bound = Delivery.relative_to(tmp_path).create(manifest="{}").bind()
     assert type(bound) is Delivery
-    with pytest.raises(TypeError, match="use root"):
+    with pytest.raises(TypeError, match=re.escape(em.Create.bound("Delivery"))):
         bound.create()
     bound.root().receipt.create("{}")
     rebound = Delivery.bind(bound)
@@ -93,13 +95,13 @@ def test_bound_schema_create_requires_root(tmp_path: Path) -> None:
 
 def test_create_rejects_unknown_collection_and_duplicate_keys(tmp_path: Path) -> None:
     fs = Delivery.relative_to(tmp_path)
-    with pytest.raises(KeyError, match="unknown create key"):
+    with pytest.raises(KeyError, match=re.escape(em.Create.unknown("missing"))):
         fs.create(missing="x")
-    with pytest.raises(ValueError, match="does not match"):
+    with pytest.raises(ValueError, match=re.escape(em.Create.member("days", "nope"))):
         fs.create(days={"nope": {}})
-    with pytest.raises(TypeError, match="duplicate create keys"):
+    with pytest.raises(TypeError, match=re.escape(em.Create.duplicate(["manifest"]))):
         fs.create({"manifest": "{}"}, manifest="{}")
-    with pytest.raises(TypeError, match=r"create keys.*name one child"):
+    with pytest.raises(TypeError, match=re.escape(em.Create.one_child(["manifest.json", "manifest"]))):
         fs.create(manifest="a", **{"manifest.json": "b"})
     with pytest.raises(NotFoundLookupError):
         fs.create(manifest={"nope": 1})
@@ -182,13 +184,13 @@ def test_create_fills_collections_from_pairs_and_basenames(tmp_path: Path) -> No
     assert bound.days[0].parts[0].read_text() == "a"
     with pytest.raises(BeartypeCallHintParamViolation):
         Delivery.relative_to(tmp_path).create(days=[{"day": when}])
-    with pytest.raises(TypeError, match="is a collection"):
+    with pytest.raises(TypeError, match=re.escape(em.Create.collection("days"))):
         Delivery.relative_to(tmp_path).create(days=tmp_path)
 
     pics = _Pics.relative_to(tmp_path / "pics")
     pics.create(images={"a.png": b"img"})
     assert (tmp_path / "pics" / "a.png").read_bytes() == b"img"
-    with pytest.raises(ValueError, match="does not match"):
+    with pytest.raises(ValueError, match=re.escape(em.Parse.member("nope"))):
         pics.images.parse("nope")
     _ = pics.images.parse("b.png").create(b"z")
     assert (tmp_path / "pics" / "b.png").read_bytes() == b"z"
@@ -226,7 +228,7 @@ class _Groups(Schema):
 
 def test_bare_pair_asks_for_a_list(tmp_path: Path) -> None:
     when = datetime(2026, 9, 17)
-    with pytest.raises(TypeError, match=r"one \(captures, payload\) pair"):
+    with pytest.raises(TypeError, match=re.escape(em.Create.pair("days"))):
         _Shelf.relative_to(tmp_path).create(days=({"day": when}, {"note": "row\n"}))
 
 
@@ -252,13 +254,13 @@ def test_stamped_file_collections_take_a_body(tmp_path: Path) -> None:
     planned.days.format(day=when).create(extra={"body": row})
     assert (tmp_path / "again" / "2026-09-17" / "extra" / "2026-09-17.txt").read_text() == row
 
-    with pytest.raises(ValueError, match="disagrees"):
+    with pytest.raises(ValueError, match=re.escape(em.Fmt.capture("day"))):
         _Shelf.relative_to(tmp_path / "clash").create(
             days=[({"day": when}, {"note": [({"day": datetime(2026, 9, 18)}, row)]})]
         )
-    with pytest.raises(TypeError, match="label"):
+    with pytest.raises(TypeError, match=re.escape(em.Create.file("files", ["label"], ["n"]))):
         _Groups.relative_to(tmp_path / "partial").create(groups=[({"n": 1}, {"files": b"rank"})])
-    with pytest.raises(ValueError, match="filenames"):
+    with pytest.raises(ValueError, match=re.escape(em.Create.FILENAMES)):
         _Shelf.relative_to(tmp_path / "names").create(days={"day": {}})
 
 
@@ -271,20 +273,20 @@ def test_stamp_failure_modes(tmp_path: Path) -> None:
     same.create(days=[({"day": when}, {"note": [({"day": when}, row)]})])
     assert (tmp_path / "same" / "2026-09-17" / "2026-09-17.txt").read_text() == row
 
-    with pytest.raises(ValueError, match="disagrees with the enclosing stamp"):
+    with pytest.raises(ValueError, match=re.escape(em.Fmt.capture("day"))):
         _Shelf.relative_to(tmp_path / "clash").create(days=[({"day": when}, {"note": [({"day": later}, row)]})])
 
-    with pytest.raises(TypeError, match=r"missing captures \['label', 'n'\]"):
+    with pytest.raises(TypeError, match=re.escape(em.Create.file("ranked", ["label", "n"], []))):
         _Shelf.relative_to(tmp_path / "open").create(ranked=b"rank")
 
-    with pytest.raises(TypeError, match=r"missing captures \['label'\]; already stamped \['n'\]"):
+    with pytest.raises(TypeError, match=re.escape(em.Create.file("files", ["label"], ["n"]))):
         _Groups.relative_to(tmp_path / "partial").create(groups=[({"n": 1}, {"files": b"rank"})])
 
-    with pytest.raises(ValueError, match="filenames, not captures"):
+    with pytest.raises(ValueError, match=re.escape(em.Create.FILENAMES)):
         _Shelf.relative_to(tmp_path / "names").create(days={"day": {}})
 
     for body in ("nope", b"nope", tmp_path):
-        with pytest.raises(TypeError, match="is a collection"):
+        with pytest.raises(TypeError, match=re.escape(em.Create.collection("days"))):
             _Shelf.relative_to(tmp_path / "plain").create(days=body)
 
 
@@ -294,11 +296,11 @@ def test_collection_create_pathlike_and_unformatted(tmp_path: Path) -> None:
     _ = source.write_text("copied")
     _ = _Shelf.relative_to(tmp_path / "copied").days.format(day=when).create(extra={"body": _Fspath(str(source))})
     assert (tmp_path / "copied" / "2026-09-17" / "extra" / "2026-09-17.txt").read_text() == "copied"
-    with pytest.raises(TypeError, match="missing captures"):
+    with pytest.raises(TypeError, match=re.escape(em.Create.file("files", ["label"], ["n"]))):
         _Groups.relative_to(tmp_path / "pathlike").groups.format(n=1).create(files=_Fspath("unused"))
-    with pytest.raises(TypeError, match="has no formatter"):
+    with pytest.raises(TypeError, match=re.escape(em.Create.names("images"))):
         _MatchPics.relative_to(tmp_path / "pairs").create(images=[(captures(part=0), b"png")])
-    with pytest.raises(TypeError, match="is a collection"):
+    with pytest.raises(TypeError, match=re.escape(em.Create.collection("images"))):
         _MatchPics.relative_to(tmp_path / "body").create(images=b"png")
 
 

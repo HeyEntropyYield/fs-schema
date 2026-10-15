@@ -1,12 +1,14 @@
 # pyright: reportPrivateUsage=false
 
 import os
+import re
 from pathlib import Path
 
 import pytest
 from beartype.roar import BeartypeCallHintParamViolation
 
 from fs_schema import Match
+from fs_schema import _errmsg as em
 from fs_schema._fmt import CaptureField, CaptureMap, ParsedCaptures
 from fs_schema._schema import (
     Dir,
@@ -207,7 +209,7 @@ def test_matches_and_templates_are_distinct_but_constructors_copy_collections(tm
 def test_directory_definition_rejects_cross_child_lookup_collisions(
     first: tuple[str, str | None], second: tuple[str, str | None], key: str
 ) -> None:
-    with pytest.raises(ValueError, match=repr(key)):
+    with pytest.raises(ValueError, match=re.escape(em.Layout.duplicate(key))):
         DirDefn(Dir(name="."), (File(name=first[0], alias=first[1]), File(name=second[0], alias=second[1])))
 
 

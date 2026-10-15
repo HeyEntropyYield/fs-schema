@@ -1,6 +1,7 @@
 # pyright: reportPrivateUsage=false, reportUnknownMemberType=false, reportUnknownArgumentType=false
 # pyright: reportUnknownVariableType=false, reportAttributeAccessIssue=false, reportCallIssue=false
 # pyright: reportIndexIssue=false, reportAssignmentType=false, reportArgumentType=false
+import re
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,7 @@ from beartype import beartype
 from beartype.roar import BeartypeCallHintParamViolation
 
 from fs_schema import FILES, Dir, File, Layout, Match, MismatchErr, Schema, SchemaRoot
+from fs_schema import _errmsg as em
 from fs_schema._schema import FixedDir, FixedFile, Matches, Template
 
 
@@ -163,11 +165,11 @@ def test_formatting_uses_native_errors_then_regex_and_safe_basename_validation()
         plan.positional.format("name")
     with pytest.raises(ValueError):
         plan.positional.format("name", "not-an-int")
-    with pytest.raises(ValueError, match="does not match"):
+    with pytest.raises(ValueError, match=re.escape(em.Fmt.pattern(r"run-[1-9][0-9]*", "run-0"))):
         plan.runs.format(n=0)
 
     for unsafe in ("", ".", "..", "../name", "dir/name", r"dir\name", "nul\0name"):
-        with pytest.raises(ValueError, match="must be a basename"):
+        with pytest.raises(ValueError, match=re.escape(em.Fmt.basename(unsafe))):
             plan.unsafe.format(name=unsafe)
 
 

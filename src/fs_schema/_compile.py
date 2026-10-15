@@ -7,6 +7,8 @@ from typing import Final
 
 from typing_extensions import TypeIs, TypeVar
 
+import fs_schema._errmsg as em
+
 from ._schema import (
     FILES,
     Defn,
@@ -37,7 +39,11 @@ def schema_defn_for(schema_type: type[Schema]) -> DirDefn:
 
 
 def _invalid_schema(class_name: str, detail: str) -> TypeError:
-    return TypeError(f"{class_name}.schema {detail}")
+    return TypeError(em.Schema.text(class_name, detail))
+
+
+def _bad(class_name: str, key: object, detail: str) -> TypeError:
+    return _invalid_schema(class_name, em.Schema.Body.decl(key, detail))
 
 
 def _is_dot_dir(node: Node, *, alias: bool) -> bool:
@@ -46,13 +52,13 @@ def _is_dot_dir(node: Node, *, alias: bool) -> bool:
 
 def _validate_schema_node(class_name: str, key: object, node: Node) -> None:
     if _is_dot_dir(node, alias=False):
-        raise _invalid_schema(class_name, f"declaration {key!r} Dir('.') requires alias")
+        raise _bad(class_name, key, em.Node.DOT_ALIAS)
     if node.name and not is_safe_basename(node.name) and not _is_dot_dir(node, alias=True):
-        raise _invalid_schema(class_name, f"declaration {key!r} name must be a basename")
+        raise _bad(class_name, key, em.Schema.Body.NAME)
     if node.alias and (not node.alias.isidentifier() or keyword.iskeyword(node.alias) or node.alias.startswith("_")):
-        raise _invalid_schema(class_name, f"declaration {key!r} alias must be a public identifier")
+        raise _bad(class_name, key, em.Schema.Body.ALIAS)
     if isinstance(node, Dir) and node.schema is not None and not is_schema_type(node.schema):
-        raise _invalid_schema(class_name, f"declaration {key!r} Dir.schema must be a Schema subclass")
+        raise _bad(class_name, key, em.Schema.Body.DIR_SCHEMA)
 
 
 def aliased_file(alias: str, source: File[_L]) -> File[_L]:
@@ -155,7 +161,7 @@ def _raw_schema(cls: type[Schema]) -> object:
 def _compile_local_defns(cls: type[Schema]) -> tuple[Defn, ...]:
     raw = _raw_schema(cls)
     if not _is_raw_mapping(raw):
-        raise _invalid_schema(cls.__name__, "must be a dict")
+        raise _invalid_schema(cls.__name__, em.Schema.Body.MUST_DICT)
     entries = raw
     defns: list[Defn] = []
     for key, value in entries.items():
@@ -197,9 +203,9 @@ def _compile_local_defns(cls: type[Schema]) -> tuple[Defn, ...]:
                 _validate_schema_node(cls.__name__, key, file)
                 defns.append(file)
             case FilesKey() as token, _ if token is FILES:
-                raise _invalid_schema(cls.__name__, f"key {key!r} requires a list of file declarations")
+                raise _invalid_schema(cls.__name__, em.Schema.Body.files(key))
             case _:
-                raise _invalid_schema(cls.__name__, f"invalid entry at key {key!r}")
+                raise _invalid_schema(cls.__name__, em.Schema.Body.invalid(key))
     return tuple(defns)
 
 
@@ -212,12 +218,12 @@ _UNSAFE_SCHEMA_DUNDERS: Final = frozenset(
 
 def validate_schema_bases(class_name: str, bases: tuple[type[object], ...]) -> None:
     if len(bases) != 1 or not is_schema_type(bases[0]):
-        raise TypeError(f"{class_name} must have exactly one direct Schema base and no mixins")
+        raise TypeError(em.Schema.one_base(class_name))
 
 
 def validate_schema_class(cls: type[Schema]) -> None:
     if type(cls) is not SchemaCls:
-        raise TypeError(f"{cls.__name__} must use the exact Schema metaclass")
+        raise TypeError(em.Schema.metaclass(cls.__name__))
     # Bases already raised in SchemaCls.__new__ via validate_schema_bases.
     # compile_schema asserts the base is still a Schema.
 
@@ -225,7 +231,7 @@ def validate_schema_class(cls: type[Schema]) -> None:
         name for ancestor in cls.__mro__[1:] for name in ancestor.__dict__ if not name.startswith("__")
     } - {"schema"}
     if unsafe := cls.__dict__.keys() & (inherited_members | _CAPTURE_MEMBERS | _UNSAFE_SCHEMA_DUNDERS):
-        raise TypeError(f"{cls.__name__} Schema declaration cannot override {sorted(unsafe)[0]!r}")
+        raise TypeError(em.Schema.override(cls.__name__, sorted(unsafe)[0]))
 
 
 def compile_schema(cls: type[Schema]) -> None:
@@ -249,7 +255,7 @@ def validate_child_shadows(cls: type[Schema]) -> None:
                 name in _CAPTURE_MEMBERS
                 or any(name in ancestor.__dict__ for ancestor in (*cls.__mro__, *type(cls).__mro__))
             ):
-                raise _invalid_schema(cls.__name__, f"child {name!r} shadows a Schema member")
+                raise _invalid_schema(cls.__name__, em.Schema.Body.shadow(name))
 
 
 def _declaration_with(node: Node) -> object:

@@ -7,6 +7,7 @@ from beartype.roar import BeartypeCallHintParamViolation
 
 import fs_schema
 from fs_schema import MismatchErr, _fmt, _schema
+from fs_schema import _errmsg as em
 
 
 def test_declarations_are_frozen_slotted_values_with_contextual_defaults() -> None:
@@ -43,7 +44,7 @@ def test_schema_keyword_is_the_schema_dict(tmp_path: Path) -> None:
     assert isinstance(bound, Box)
     assert bound.manifest.path.name == "manifest.json"
 
-    with pytest.raises(TypeError, match="cannot set schema twice"):
+    with pytest.raises(TypeError, match=re.escape(em.Schema.twice("Both"))):
 
         class Both(_schema.Schema, schema={"a": "a.txt"}):  # pyright: ignore[reportUnusedClass]
             schema = {"b": "b.txt"}
@@ -57,14 +58,14 @@ def test_files_is_the_single_identity_token() -> None:
 @pytest.mark.parametrize(
     ("kwargs", "message"),
     [
-        ({}, "declaration requires name, fmt, or match"),
+        ({}, em.Node.NEEDS),
         ({"fmt": "{unclosed"}, "expected .}."),
         ({"match": "("}, "unterminated subpattern"),
-        ({"name": "value", "fmt": "{value}"}, "name cannot be combined"),
-        ({"name": "value", "min": -1}, "min must be at least zero"),
-        ({"fmt": "{value}", "min": 2, "max": 1}, "max must be at least min"),
-        ({"name": "value", "max": 2}, "exact-name max is implicit"),
-        ({"name": "value", "min": 2}, "exact-name min must be 0 or 1"),
+        ({"name": "value", "fmt": "{value}"}, em.Node.NAME_FMT),
+        ({"name": "value", "min": -1}, em.Node.MIN),
+        ({"fmt": "{value}", "min": 2, "max": 1}, em.Node.MAX),
+        ({"name": "value", "max": 2}, em.Node.EXACT_MAX),
+        ({"name": "value", "min": 2}, em.Node.EXACT_MIN),
     ],
 )
 def test_declaration_semantic_failures(kwargs: dict[str, object], message: str) -> None:
@@ -87,7 +88,7 @@ def test_with_copies_optional_exact_name() -> None:
     assert _schema.Dir("notes").with_(optional=True).min == 0
     aliased = required.with_(alias="receipt")
     assert aliased.alias == "receipt" and aliased.schema is str
-    with pytest.raises(ValueError, match="optional is only valid"):
+    with pytest.raises(ValueError, match=re.escape(em.Node.OPTIONAL)):
         _schema.File(fmt="{value}").with_(optional=True)
 
 
@@ -153,7 +154,7 @@ def test_skip_mismatch_drops_failed_file_matches_and_bad_directories(tmp_path: P
 
     failed = DatedStrict.bind(root)
     assert isinstance(failed, MismatchErr)
-    assert "failed match" in str(failed)
+    assert em.Bind.failed("20260102", "20260101") in str(failed)
 
     class DatedSkipMatch(_schema.Schema):
         schema = {
@@ -169,7 +170,7 @@ def test_skip_mismatch_drops_failed_file_matches_and_bad_directories(tmp_path: P
 
 def test_match_only_format_rejected() -> None:
     declaration = _schema.File(match=r"part-.+", min=0)
-    with pytest.raises(TypeError, match="declaration has no formatter"):
+    with pytest.raises(TypeError, match=re.escape(em.Fmt.NONE)):
         _schema._format_node(declaration)
 
 
@@ -177,14 +178,14 @@ def test_exact_name_rejects_collection_only_flags() -> None:
     def sort_key(match: _schema.Match) -> str:
         return match.path.name  # pragma: no cover
 
-    with pytest.raises(ValueError, match="sort is only valid"):
+    with pytest.raises(ValueError, match=re.escape(em.Node.SORT)):
         _schema.File("value", sort=sort_key)  # pyright: ignore[reportCallIssue]
-    with pytest.raises(ValueError, match="sort_rev is only valid"):
+    with pytest.raises(ValueError, match=re.escape(em.Node.SORT_REV)):
         _schema.File("value", sort_rev=True)  # pyright: ignore[reportCallIssue]
-    with pytest.raises(ValueError, match="skip_mismatch is only valid"):
+    with pytest.raises(ValueError, match=re.escape(em.Node.SKIP)):
         _schema.File("value", skip_mismatch=True)  # pyright: ignore[reportCallIssue]
 
 
 def test_collection_rejects_optional_flag() -> None:
-    with pytest.raises(ValueError, match="optional is only valid"):
+    with pytest.raises(ValueError, match=re.escape(em.Node.OPTIONAL)):
         _schema.File(fmt="{value}", optional=True)  # pyright: ignore[reportCallIssue]

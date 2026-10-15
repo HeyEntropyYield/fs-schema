@@ -1,11 +1,13 @@
 # pyright: reportPrivateUsage=false, reportUnknownMemberType=false, reportUnknownArgumentType=false
 # pyright: reportAttributeAccessIssue=false
+import re
 from datetime import datetime
 from pathlib import Path
 
 import pytest
 
 from fs_schema import FILES, Match, MismatchErr, _schema
+from fs_schema import _errmsg as em
 from fs_schema._fmt import dt
 from fs_schema._schema import (
     Dir,
@@ -45,7 +47,7 @@ def test_private_bind_defns_rejects_bad_root_and_propagates_nested_mismatch(tmp_
     nested = DirDefn(Dir("nested"), (File("note.txt"),))
     mismatch = bind_defns(root, (nested,))
     assert isinstance(mismatch, MismatchErr)
-    assert str(mismatch) == f"expected file: {root / 'nested' / 'required'}"
+    assert str(mismatch) == em.Bind.file(root / "nested" / "note.txt")
 
 
 def test_fixed_name_binds_exact_path(tmp_path: Path) -> None:
@@ -76,7 +78,8 @@ def test_fixed_and_template_selector_matrix_with_regex_captures(tmp_path: Path) 
         (("b",), {"num": None}),
     ]
     bad = bind_defns(root, (File(name="fixed.txt", match=r"other"),))
-    assert isinstance(bad, MismatchErr) and "does not match" in str(bad)
+    assert isinstance(bad, MismatchErr)
+    assert str(bad) == em.Bind.fixed("other", root / "fixed.txt")
 
     planned = bind_defns(root, (File(fmt="absent-{part:d}.txt", match=r"absent-[0-9]+[.]txt", min=0),))
     assert isinstance(planned, FixedDir)
@@ -158,8 +161,8 @@ def test_sorting_and_nested_selected_directory_mismatch_propagates(tmp_path: Pat
     mismatch = bind_defns(root, defns)
     assert isinstance(mismatch, MismatchErr)
     assert str(mismatch).splitlines() == [
-        f"expected file: {root / 'run-1' / 'required'}",
-        f"expected 2..unbounded matches for defn 2, found 1: {root}",
+        em.Bind.file(root / "run-1" / "note.txt"),
+        em.Bind.count(low=2, high=None, position=2, found=1, dangling=[], path=root),
     ]
 
     sorted_only = bind_defns(root, defns[:2])
@@ -180,10 +183,10 @@ def test_bind_reports_every_sibling_failure_in_declaration_order(tmp_path: Path)
     mismatch = bind_defns(root, defns)
     assert isinstance(mismatch, MismatchErr)
     assert str(mismatch).splitlines() == [
-        f"expected file: {root / 'missing-1'}",
-        f"expected file: {root / 'inner' / 'gone-a'}",
-        f"expected file: {root / 'inner' / 'gone-b'}",
-        f"expected file: {root / 'missing-2'}",
+        em.Bind.file(root / "missing-1"),
+        em.Bind.file(root / "inner" / "gone-a"),
+        em.Bind.file(root / "inner" / "gone-b"),
+        em.Bind.file(root / "missing-2"),
     ]
     assert not str(mismatch).endswith("\n")
     assert str(bind_defns(root, defns, fast=True)) == str(mismatch).splitlines()[0]
@@ -207,7 +210,7 @@ def test_fast_bind_does_not_visit_later_siblings(tmp_path: Path, monkeypatch: py
     monkeypatch.setattr(_schema, "_bind_dir_defn", track)
     mismatch = Pair.bind(root, fast=True)
     assert isinstance(mismatch, MismatchErr)
-    assert str(mismatch) == f"expected file: {root / 'a.txt'}"
+    assert str(mismatch) == em.Bind.file(root / "a.txt")
     assert seen == [0]
     assert str(Pair.relative_to(root).bind(fast=True)) == str(mismatch)
 
@@ -253,7 +256,7 @@ def test_fast_bind_does_not_open_a_later_collection_member(tmp_path: Path, monke
     monkeypatch.setattr(_schema, "_bind_children", track)
     mismatch = Runs.bind(root, fast=True)
     assert isinstance(mismatch, MismatchErr)
-    assert str(mismatch) == f"expected file: {root / 'run-1' / 'body.txt'}"
+    assert str(mismatch) == em.Bind.file(root / "run-1" / "body.txt")
     assert root / "run-2" not in seen
 
 
@@ -265,7 +268,7 @@ def test_fast_bind_stops_on_the_first_failed_match(tmp_path: Path) -> None:
     _touch(files, "bad-1.txt", "bad-2.txt")
     file_mismatch = Files.bind(files, fast=True)
     assert isinstance(file_mismatch, MismatchErr)
-    assert str(file_mismatch) == "failed match 'ok-.+': bad-1.txt"
+    assert str(file_mismatch) == em.Bind.failed("ok-.+", "bad-1.txt")
 
     class Dirs(Schema):
         schema = {Dir(fmt="{stem}", match=r"ok-.+", min=0): {"body": "body.txt"}}
@@ -275,7 +278,7 @@ def test_fast_bind_stops_on_the_first_failed_match(tmp_path: Path) -> None:
     (dirs / "bad-2").mkdir()
     dir_mismatch = Dirs.bind(dirs, fast=True)
     assert isinstance(dir_mismatch, MismatchErr)
-    assert str(dir_mismatch) == "failed match 'ok-.+': bad-1"
+    assert str(dir_mismatch) == em.Bind.failed("ok-.+", "bad-1")
 
 
 def test_fast_bind_still_passes_a_skipped_mismatch(tmp_path: Path) -> None:
@@ -289,13 +292,13 @@ def test_fast_bind_still_passes_a_skipped_mismatch(tmp_path: Path) -> None:
     _touch(root, "bad.txt")
     mismatch = Bundle.bind(root, fast=True)
     assert isinstance(mismatch, MismatchErr)
-    assert str(mismatch) == f"expected file: {root / 'need.txt'}"
+    assert str(mismatch) == em.Bind.file(root / "note.txt")
 
 
 def test_bind_single_failure_is_one_line(tmp_path: Path) -> None:
     mismatch = bind_defns(tmp_path, (File(name="missing"),))
     assert isinstance(mismatch, MismatchErr)
-    assert str(mismatch) == f"expected file: {tmp_path / 'missing'}"
+    assert str(mismatch) == em.Bind.file(tmp_path / "missing")
 
 
 def test_bind_reports_count_and_member_failures_in_one_directory(tmp_path: Path) -> None:
@@ -309,10 +312,10 @@ def test_bind_reports_count_and_member_failures_in_one_directory(tmp_path: Path)
     mismatch = bind_defns(root, (run, parts))
     assert isinstance(mismatch, MismatchErr)
     assert str(mismatch).splitlines() == [
-        f"expected file: {root / 'run-1' / 'required'}",
-        f"expected 2..unbounded matches for defn 0, found 1: {root}",
-        "failed match 'part-1[.]txt': part-2.txt",
-        f"expected 1..unbounded matches for defn 1, found 0: {root}",
+        em.Bind.file(root / "run-1" / "note.txt"),
+        em.Bind.count(low=2, high=None, position=0, found=1, dangling=[], path=root),
+        em.Bind.failed(r"part-1[.]txt", "part-2.txt"),
+        em.Bind.count(low=1, high=None, position=1, found=0, dangling=[], path=root),
     ]
 
 
@@ -333,11 +336,11 @@ def test_aggregate_of_aggregates_matches_a_flat_list(tmp_path: Path) -> None:
     right = DirDefn(Dir(name="right"), (File(name="a"), File(name="b")))
     mismatch = bind_defns(root, (bad, left, right))
     lines = [
-        f"expected directory: {root / 'not-a-dir'}",
-        f"expected file: {root / 'left' / 'a'}",
-        f"expected file: {root / 'left' / 'b'}",
-        f"expected file: {root / 'right' / 'a'}",
-        f"expected file: {root / 'right' / 'b'}",
+        em.Bind.directory(root / "not-a-dir"),
+        em.Bind.file(root / "left" / "a"),
+        em.Bind.file(root / "left" / "b"),
+        em.Bind.file(root / "right" / "a"),
+        em.Bind.file(root / "right" / "b"),
     ]
     built = _schema._aggregate([
         _schema._mismatch(lines[0]),
@@ -358,10 +361,10 @@ def test_bind_flattens_nested_aggregates_from_members(tmp_path: Path) -> None:
     mismatch = bind_defns(root, (run,))
     assert isinstance(mismatch, MismatchErr)
     assert str(mismatch).splitlines() == [
-        f"expected file: {root / 'run-1' / 'a'}",
-        f"expected file: {root / 'run-1' / 'b'}",
-        f"expected file: {root / 'run-2' / 'a'}",
-        f"expected file: {root / 'run-2' / 'b'}",
+        em.Bind.file(root / "run-1" / "a"),
+        em.Bind.file(root / "run-1" / "b"),
+        em.Bind.file(root / "run-2" / "a"),
+        em.Bind.file(root / "run-2" / "b"),
     ]
 
 
@@ -370,7 +373,7 @@ def test_bind_message_stays_one_line_for_odd_filenames(tmp_path: Path) -> None:
     _touch(tmp_path, odd)
     mismatch = bind_defns(tmp_path, (File(fmt="{n}", match=r"1", min=0),))
     assert isinstance(mismatch, MismatchErr)
-    assert str(mismatch).splitlines() == ["failed match '1': a\\nb\\u2028c"]
+    assert str(mismatch).splitlines() == [str(_schema._mismatch(em.Bind.failed("1", odd)))]
 
 
 def test_callable_loading_preserves_generic_runtime_declaration(tmp_path: Path) -> None:
@@ -386,7 +389,7 @@ def test_callable_loading_preserves_generic_runtime_declaration(tmp_path: Path) 
     assert isinstance(bound, FixedDir)
     fixed, matches = bound
     assert isinstance(fixed, FixedFile) and fixed.defn is fixed_defn and fixed.load() == 7
-    with pytest.raises(TypeError, match="class loader"):
+    with pytest.raises(TypeError, match=re.escape(em.Load.loader(fixed.path, decode))):
         fixed.load(int)
     assert isinstance(matches, Template)
     first_match = matches[0]
@@ -397,9 +400,9 @@ def test_callable_loading_preserves_generic_runtime_declaration(tmp_path: Path) 
     model_file = model[0]
     assert isinstance(model_file, FixedFile)
     failure = model_file.load()
-    assert isinstance(failure, TypeError) and "requires a .json file" in str(failure)
+    assert isinstance(failure, TypeError) and str(failure) == em.Json.suffix(".num")
     assert isinstance(model_file.load(int), TypeError)
-    with pytest.raises(TypeError, match="not a subclass of str"):
+    with pytest.raises(TypeError, match=re.escape(em.Load.subclass(model_file.path, "int", "str"))):
         model_file.load(str)
     bare = bind_defns(root, (File(name="fixed.num"),))
     assert isinstance(bare, FixedDir)
@@ -515,7 +518,7 @@ def test_root_kind_validation_including_empty_schemas(tmp_path: Path) -> None:
         for root in (missing, file_root):
             mismatch = schema.bind(root)
             assert isinstance(mismatch, MismatchErr)
-            assert str(mismatch) == f"expected directory: {root}"
+            assert str(mismatch) == em.Bind.directory(root)
 
 
 def test_dir_schema_has_no_runtime_merge_or_second_binding(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

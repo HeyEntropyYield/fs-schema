@@ -1,10 +1,12 @@
 # pyright: reportPrivateUsage=false
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 from beartype.roar import BeartypeCallHintParamViolation
 
+from fs_schema import _errmsg as em
 from fs_schema import _ops
 
 
@@ -228,7 +230,7 @@ def test_copy_to_refuses_overlapping_paths(tmp_path: Path, layout: str) -> None:
         "dest-inside-source": src / "nested",
         "source-inside-dest": tmp_path,
     }[layout]
-    with pytest.raises(ValueError, match="onto itself"):
+    with pytest.raises(ValueError, match=re.escape(em.Copy.onto(dest))):
         _ops.copy_to(src, dest)
 
 

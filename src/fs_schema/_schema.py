@@ -29,6 +29,8 @@ from typing_extensions import (
     runtime_checkable,
 )
 
+import fs_schema._errmsg as em
+
 from ._fmt import CaptureField, CaptureMap, FmtField, FmtLike, ParsedCaptures
 from ._ops import MismatchErr, is_mismatch, load, put
 from ._ops import copy_to as copy_path
@@ -111,7 +113,7 @@ class Node:
     def __post_init__(self, optional: bool) -> None:
         if optional:
             if not self.name:
-                raise ValueError("optional is only valid for exact-name declarations")
+                raise ValueError(em.Node.OPTIONAL)
             object.__setattr__(self, "min", 0)
         selector, maximum = _validate_node(self)
         object.__setattr__(self, "_selector", selector)
@@ -282,14 +284,14 @@ class DirDefn:
 
         def add_uniq(target: dict[str, int], key: str, index: int) -> None:
             if key in target and target[key] != index:
-                raise ValueError(f"duplicate child key: {key!r}")
+                raise ValueError(em.Layout.duplicate(key))
             target[key] = index
 
         for index, child_defn in enumerate(child_defns):
             node = defn_node(child_defn)
             if node.name == ".":
                 if not node.alias:
-                    raise ValueError("Dir('.') requires alias")
+                    raise ValueError(em.Node.DOT_ALIAS)
                 add_uniq(identities, node.alias, index)
                 add_uniq(lookup, node.alias, index)
                 continue
@@ -389,12 +391,10 @@ class FixedFile(_Fixed, Generic[_L_co]):
         declared = self.defn.schema
         if model and declared and not (isinstance(declared, type) and issubclass(declared, model)):
             if isinstance(declared, type):
-                raise TypeError(
-                    f"{self.path}: declared loader {declared.__name__} is not a subclass of {model.__name__}"
-                )
-            raise TypeError(f"{self.path}: load needs a class loader, not {declared!r}")
+                raise TypeError(em.Load.subclass(self.path, declared.__name__, model.__name__))
+            raise TypeError(em.Load.loader(self.path, declared))
         if not (schema := declared or model):
-            return Exception(f"file has no declared loader: {self.path}")
+            return Exception(em.Load.missing(self.path))
         got = load(self.path, schema)
         if not model or isinstance(got, Exception | model):
             return typing.cast(_L_co | Exception, got)
@@ -539,7 +539,7 @@ class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
     def parse(self, source: PathIsh) -> "FixedFile[object] | FixedDir":
         basename = Path(source).name
         if not is_safe_basename(basename) or defn_node(self.defn).select(basename) is None:
-            raise ValueError(f"member {basename!r} does not match")
+            raise ValueError(em.Parse.member(basename))
         return plan_fixed(self.path / basename, self.defn)
 
 
@@ -810,11 +810,11 @@ def format_any(
 ) -> "FixedFile[object] | FixedDir":
     for name, value in kwargs.items():
         if name in template.stamps and template.stamps[name] != value:
-            raise ValueError(f"capture {name!r} disagrees with the enclosing stamp")
+            raise ValueError(em.Fmt.capture(name))
     node = defn_node(template.defn)
     basename = _format_node(node, *args, **kwargs)
     if not is_safe_basename(basename):
-        raise ValueError(f"formatted name must be a basename: {basename!r}")
+        raise ValueError(em.Fmt.basename(basename))
     created = plan_fixed(template.path / basename, template.defn)
     if isinstance(created, FixedDir):
         _stamp_tree(created, {**template.stamps, **kwargs})
@@ -827,14 +827,14 @@ def write_plan(directory: FixedDir, spec: Mapping[str, CreateTop] | None = None,
     _reject_bound_create(directory)
     merged: dict[str, CreateTop] = dict(spec or {})
     if overlap := merged.keys() & children.keys():
-        raise TypeError(f"duplicate create keys: {sorted(overlap)}")
+        raise TypeError(em.Create.duplicate(sorted(overlap)))
     merged.update(children)
     apply_create(directory, merged)
 
 
 def _reject_bound_create(node: object) -> None:
     if isinstance(type(node), SchemaCls):
-        raise TypeError(f"create on bound {type(node).__name__}; use root()")
+        raise TypeError(em.Create.bound(type(node).__name__))
 
 
 ## Names, captures, and declaration checks
@@ -865,28 +865,28 @@ def is_safe_basename(name: str) -> bool:
 
 def _validate_node(node: Node) -> tuple[Selector, int | None]:
     if node.name == "." and node.match:
-        raise ValueError("Dir('.') cannot take match")
+        raise ValueError(em.Node.DOT_MATCH)
     if not any((node.name, node.fmt, node.match)):
-        raise ValueError("declaration requires name, fmt, or match")
+        raise ValueError(em.Node.NEEDS)
     if node.name and node.fmt is not None:
-        raise ValueError("name cannot be combined with fmt")
+        raise ValueError(em.Node.NAME_FMT)
     if node.name:
         if node.skip_mismatch:
-            raise ValueError("skip_mismatch is only valid for collection declarations")
+            raise ValueError(em.Node.SKIP)
         if node.sort is not None:
-            raise ValueError("sort is only valid for collection declarations")
+            raise ValueError(em.Node.SORT)
         if node.sort_rev:
-            raise ValueError("sort_rev is only valid for collection declarations")
+            raise ValueError(em.Node.SORT_REV)
     if node.min < 0:
-        raise ValueError("min must be at least zero")
+        raise ValueError(em.Node.MIN)
     if node.name:
         if node.min not in (0, 1):
-            raise ValueError("exact-name min must be 0 or 1")
+            raise ValueError(em.Node.EXACT_MIN)
         if node.max not in (None, 1):
-            raise ValueError("exact-name max is implicit")
+            raise ValueError(em.Node.EXACT_MAX)
         return Selector(node.fmt, node.match), 1
     if node.max is not None and node.max < node.min:
-        raise ValueError("max must be at least min")
+        raise ValueError(em.Node.MAX)
     return Selector(node.fmt, node.match), node.max
 
 
@@ -963,10 +963,10 @@ def _bind_dir_defn(
         if node.min == 0 and node.name != "." and not target.exists():
             return None
         if node.select(target.name) is None:
-            return _mismatch(f"fixed basename does not match {node.match!r}: {target}")
+            return _mismatch(em.Bind.fixed(node.match, target))
         if not _is_kind(target, defn):
-            kind = "file" if isinstance(defn, File) else "directory"
-            return _mismatch(f"expected {kind}: {target}")
+            message = em.Bind.file(target) if isinstance(defn, File) else em.Bind.directory(target)
+            return _mismatch(message)
         bound = _bind_fixed(target, defn, cache, fast=fast)
         if node.name == "." and node.min == 0 and is_mismatch(bound):
             return None
@@ -978,10 +978,10 @@ def _bind_dir_defn(
         return failures[0]
     count = len(matches)
     if count < node.min or (node.max is not None and count > node.max):
-        upper = "unbounded" if node.max is None else str(node.max)
-        dangling = _dangling_names(defn, listing)
-        suffix = f" (dangling: {', '.join(dangling)})" if dangling else ""
-        failures.append(_mismatch(f"expected {node.min}..{upper} matches for defn {position}, found {count}{suffix}: {path}"))  # fmt: skip
+        failures.append(_mismatch(em.Bind.count(
+            low=node.min, high=node.max, position=position, found=count,
+            dangling=_dangling_names(defn, listing), path=path,
+            )))  # fmt: skip
     if failures:
         return _aggregate(failures)
     return Template(path, matches, defn) if node.fmt is not None else Matches(path, matches, defn)
@@ -1031,7 +1031,7 @@ def _failed_match(node: Node, basename: str) -> MismatchErr | None:
     pattern = node._selector.match_failure(basename)  # pyright: ignore[reportPrivateUsage]
     if pattern is None:
         return None
-    return _mismatch(f"failed match {pattern!r}: {basename}")
+    return _mismatch(em.Bind.failed(pattern, basename))
 
 
 def _bind_file_matches(defn: File[_L], listing: Sequence[Path], *, fast: bool = False) -> _MatchRes[_FileMatch[_L]]:
@@ -1138,7 +1138,7 @@ class SchemaCls(type):
     ) -> "SchemaCls":
         if schema is not None:
             if "schema" in namespace:
-                raise TypeError(f"{name} cannot set schema twice")
+                raise TypeError(em.Schema.twice(name))
             namespace["schema"] = schema
         if namespace.get(_BOUND_MATCH) or "Schema" not in globals():
             return super().__new__(metacls, name, bases, namespace, **kwargs)
