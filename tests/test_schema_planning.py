@@ -20,7 +20,7 @@ def _decode_number(path: Path) -> int:
 _DEEP_LAYOUT: Layout = {
     Dir(fmt="batch-{n:d}", alias="batches"): {
         FILES: [File(fmt="part-{part:d}.jsonl", alias="parts", schema=_decode_number)],
-    }
+    },
 }
 
 

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import ClassVar
 
 import pytest
+from pytest_params import params
 
 from fs_schema import FILES, Dir, File, MismatchErr, Schema
 from fs_schema import _errmsg as em
@@ -46,22 +47,19 @@ def test_reifies_each_raw_grammar_branch_and_stable_class_navigation() -> None:
     assert not hasattr(LayoutSchema, "__parameters__")
 
 
-@pytest.mark.parametrize(
-    "layout",
-    [
-        [],
-        {FILES: "bad"},
-        {FILES: [42]},
-        {Dir("bad"): 42},
-        {"bad": 42},
-        {42: "bad"},
-        {FILES: [File(".")]},
-        {FILES: [File("nested/file")]},
-        {FILES: [File("ok", alias="not-valid")]},
-        {FILES: [File("ok", alias="class")]},
-        {FILES: [File("ok", alias="_private")]},
-    ],
-)
+@params("layout", [
+    ("empty list", []),
+    ("files string", {FILES: "bad"}),
+    ("files int", {FILES: [42]}),
+    ("dir int", {Dir("bad"): 42}),
+    ("string int", {"bad": 42}),
+    ("int key", {42: "bad"}),
+    ("dot file", {FILES: [File(".")]}),
+    ("nested file", {FILES: [File("nested/file")]}),
+    ("bad alias", {FILES: [File("ok", alias="not-valid")]}),
+    ("class alias", {FILES: [File("ok", alias="class")]}),
+    ("private alias", {FILES: [File("ok", alias="_private")]}),
+])  # fmt: skip
 def test_invalid_layouts_fail_at_class_creation_with_context(layout: object) -> None:
     with pytest.raises(TypeError, match=re.escape(em.Schema.text("Invalid", ""))):
         _define(layout)
@@ -209,15 +207,12 @@ def test_dir_schema_is_a_class_time_structural_requirement() -> None:
     assert issubclass(Accepted.inline, Schema)
 
 
-@pytest.mark.parametrize(
-    "rhs",
-    [
-        {"nested": {"leaf": "leaf.txt"}},
-        {"note": File("b.txt"), "nested": {"leaf": "leaf.txt"}},
-        {"note": "note.txt", "nested": {}},
-        {"note": "note.txt", Dir("nested", match="nested"): {"leaf": "leaf.txt"}},
-    ],
-)
+@params("rhs", [
+    ("missing required", {"nested": {"leaf": "leaf.txt"}}),
+    ("different file", {"note": File("b.txt"), "nested": {"leaf": "leaf.txt"}}),
+    ("empty nested", {"note": "note.txt", "nested": {}}),
+    ("matched nested", {"note": "note.txt", Dir("nested", match="nested"): {"leaf": "leaf.txt"}}),
+])  # fmt: skip
 def test_dir_schema_rejects_missing_or_unequal_required_declarations(rhs: object) -> None:
     class Required(Schema):
         schema = {"note": "note.txt", "nested": {"leaf": "leaf.txt"}}
@@ -308,21 +303,18 @@ def test_schema_policy_allows_passive_metadata_but_protects_critical_behavior() 
             type(f"Bad_{role}", (Schema,), {"__module__": __name__, **namespace})
 
 
-@pytest.mark.parametrize("name", ["args", "kwargs"])
+@params("name", [("args", "args"), ("kwargs", "kwargs")])
 def test_schema_policy_reserves_match_members(name: str) -> None:
     with pytest.raises(TypeError, match=re.escape(em.Schema.override("CaptureMember", name))):
         type("CaptureMember", (Schema,), {name: object()})
 
 
-@pytest.mark.parametrize(
-    ("layout", "name"),
-    [
-        ({FILES: [File("args")]}, "args"),
-        ({FILES: [File("value", alias="kwargs")]}, "kwargs"),
-        ({"bind": "value"}, "bind"),
-        ({FILES: [File("path")]}, "path"),
-    ],
-)
+@params(("layout", "name"), [
+    ("file args", {FILES: [File("args")]}, "args"),
+    ("alias kwargs", {FILES: [File("value", alias="kwargs")]}, "kwargs"),
+    ("bind", {"bind": "value"}, "bind"),
+    ("path", {FILES: [File("path")]}, "path"),
+])  # fmt: skip
 def test_schema_policy_rejects_reserved_navigation_names(layout: object, name: str) -> None:
     with pytest.raises(TypeError, match=re.escape(em.Schema.text("Reserved", em.Schema.Body.shadow(name)))):
         type("Reserved", (Schema,), {"schema": layout})
@@ -361,21 +353,14 @@ def test_schema_policy_rejects_mixins_multiple_inheritance_and_custom_metaclass(
         _ = odd.missing
 
 
-@pytest.mark.parametrize(
-    ("first", "second", "collision"),
-    [
-        (File("same", alias="first"), File("same", alias="second"), "same"),
-        (File("same"), File("other", alias="same"), "same"),
-        (File("first", alias="shared"), File("second", alias="shared"), "shared"),
-        (File("same_name", alias="first"), File("same-name", alias="second"), "same_name"),
-        (File("first", alias="same_name"), File("same-name", alias="second"), "same_name"),
-        (
-            File(fmt="part-{n:d}", alias="first"),
-            File(fmt="part-{n:d}", alias="second"),
-            "part-{n:d}",
-        ),
-    ],
-)
+@params(("first", "second", "collision"), [
+    ("same name", File("same", alias="first"), File("same", alias="second"), "same"),
+    ("alias is name", File("same"), File("other", alias="same"), "same"),
+    ("shared alias", File("first", alias="shared"), File("second", alias="shared"), "shared"),
+    ("normalized name", File("same_name", alias="first"), File("same-name", alias="second"), "same_name"),
+    ("normalized alias", File("first", alias="same_name"), File("same-name", alias="second"), "same_name"),
+    ("same format", File(fmt="part-{n:d}", alias="first"), File(fmt="part-{n:d}", alias="second"), "part-{n:d}"),
+])  # fmt: skip
 def test_name_alias_normalized_and_format_collisions_fail_at_class_creation(
     first: File[object], second: File[object], collision: str
 ) -> None:
@@ -390,7 +375,7 @@ def test_inherited_identity_overrides_are_permissive_but_effective_collisions_fa
                 File("named", match="base"),
                 File("old", alias="aliased"),
                 File(fmt="part-{n:d}"),
-            ]
+            ],
         }
 
     class Override(Base):
@@ -399,7 +384,7 @@ def test_inherited_identity_overrides_are_permissive_but_effective_collisions_fa
                 File("named", match="derived"),
                 File("new", alias="aliased"),
                 File(fmt="part-{n:d}", min=0),
-            ]
+            ],
         }
 
     assert [node.name for node in Override._schema_defn.defns if isinstance(node, File)] == ["named", "new", ""]
@@ -470,3 +455,9 @@ def test_subclass_overrides_one_nested_file_and_keeps_siblings() -> None:
         assert isinstance(defn, File)
         by_name[defn.name] = defn.min
     assert by_name == {"keep.txt": 1, "flip.txt": 1}
+
+
+def test_unwired_catalog_sentences() -> None:
+    assert em.Schema.Body.schema_or_dict("k", 1) == "key 'k' member 1 must be a Schema or dict"
+    assert em.Xor.empty(".") == "xor has no layouts: ."
+    assert em.Xor.single(".") == "xor has no single layout: ."

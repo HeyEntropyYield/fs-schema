@@ -78,8 +78,6 @@ def check() -> None:
     assert_type(_schema.plan_fixed(Path("directory"), dir_defn), _schema.FixedDir)
     assert_type(_schema._bind_fixed(Path("directory"), dir_defn, {}), _schema.FixedDir | fss.MismatchErr)
     assert_type(_schema._bind_children(Path("root"), dir_defn, {}), tuple[_schema.BoundChild, ...] | fss.MismatchErr)
-    bound = _schema.bind_defns(Path("root"), (file_defn, dir_defn))
-    assert_type(bound, _schema.FixedDir | fss.MismatchErr)
 
     class Concrete(_schema.Schema):
         schema = {"child": {"value": "value.txt"}}

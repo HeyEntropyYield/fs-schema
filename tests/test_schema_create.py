@@ -232,7 +232,7 @@ def test_bare_pair_asks_for_a_list(tmp_path: Path) -> None:
         _Shelf.relative_to(tmp_path).create(days=({"day": when}, {"note": "row\n"}))
 
 
-def test_stamped_file_collections_take_a_body(tmp_path: Path) -> None:
+def test_formatted_file_collections_take_a_body(tmp_path: Path) -> None:
     when = datetime(2026, 9, 17)
     row = "row\n"
     bound = (
@@ -264,7 +264,7 @@ def test_stamped_file_collections_take_a_body(tmp_path: Path) -> None:
         _Shelf.relative_to(tmp_path / "names").create(days={"day": {}})
 
 
-def test_stamp_failure_modes(tmp_path: Path) -> None:
+def test_capture_disagreement_and_missing_names(tmp_path: Path) -> None:
     when = datetime(2026, 9, 17)
     later = datetime(2026, 9, 18)
     row = "row\n"

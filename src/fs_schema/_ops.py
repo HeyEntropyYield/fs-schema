@@ -44,11 +44,11 @@ def exists_opt(path: PathIsh | None) -> Path | None:
 
 def put(path: PathIsh, data: Puttable | PathIsh | None = None) -> None:
     target = Path(path)
-    _commit(target, lambda temporary: _write_puttable(temporary, data))
+    _write_exn(target, lambda temporary: _write_puttable(temporary, data))  # OSError
 
 
 def link_to(path: PathIsh, target: PathIsh, *, hard: bool = False) -> None:
-    _commit(Path(path), lambda temporary: _link(temporary, target, hard=hard))
+    _write_exn(Path(path), lambda temporary: _link(temporary, target, hard=hard))  # OSError
 
 
 def copy_to(
@@ -58,9 +58,10 @@ def copy_to(
     follow_symlinks: bool = True,
     clean: bool = False,
 ) -> None:
+    """Exception: api intentionally forwards OS errors"""
     src = Path(source)
     target = Path(dest)
-    if _overlaps(src, target):
+    if _path_overlap(src, target):
         raise ValueError(em.Copy.onto(target))
     if clean and (target.exists() or target.is_symlink()):
         if target.is_dir() and not target.is_symlink():
@@ -83,12 +84,12 @@ def copy_to(
     os.symlink(src.readlink(), target)
 
 
-def _overlaps(source: Path, dest: Path) -> bool:
+def _path_overlap(source: Path, dest: Path) -> bool:
     src, dst = source.resolve(), dest.resolve()
     return src == dst or src in dst.parents or dst in src.parents
 
 
-def _commit(target: Path, write: Callable[[Path], None]) -> None:
+def _write_exn(target: Path, write: Callable[[Path], None]) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     descriptor, name = tempfile.mkstemp(dir=target.parent, prefix=".", suffix=target.suffix)
     os.close(descriptor)
@@ -102,6 +103,7 @@ def _commit(target: Path, write: Callable[[Path], None]) -> None:
 
 
 def _write_puttable(target: Path, data: Puttable | PathIsh | None) -> None:
+    """Exception: OSError"""
     match data:
         case None:
             _ = target.write_bytes(b"")

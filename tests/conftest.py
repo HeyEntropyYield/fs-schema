@@ -1,9 +1,12 @@
 # pyright: reportUnusedFunction=false
 from pathlib import Path
 
+import _pytest.scope as _pytest_scope
 import pytest
 import sh
 from scripts import release
+
+setattr(_pytest_scope, "_ScopeName", str)  # noqa: B010  pytest-params 0.3.0, removed in pytest 9
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 git_root = sh.git.bake(_tty_out=False, _cwd=str(PROJECT_ROOT))

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from beartype.roar import BeartypeCallHintParamViolation
+from pytest_params import params  # pyright: ignore[reportUnknownVariableType]
 
 from fs_schema import Match
 from fs_schema import _errmsg as em
@@ -197,15 +198,12 @@ def test_matches_and_templates_are_distinct_but_constructors_copy_collections(tm
     assert not hasattr(matches, "format")
 
 
-@pytest.mark.parametrize(
-    ("first", "second", "key"),
-    [
-        (("same", None), ("same", None), "same"),
-        (("same", None), ("other", "same"), "same"),
-        (("same_name", None), ("same-name", None), "same_name"),
-        (("first", "same"), ("second", "same"), "same"),
-    ],
-)
+@params(("first", "second", "key"), [
+    ("same name", ("same", None), ("same", None), "same"),
+    ("alias collides with name", ("same", None), ("other", "same"), "same"),
+    ("normalized name", ("same_name", None), ("same-name", None), "same_name"),
+    ("same alias", ("first", "same"), ("second", "same"), "same"),
+])  # fmt: skip
 def test_directory_definition_rejects_cross_child_lookup_collisions(
     first: tuple[str, str | None], second: tuple[str, str | None], key: str
 ) -> None:

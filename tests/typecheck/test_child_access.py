@@ -18,13 +18,11 @@ def check(box_path: Path) -> None:
         }
 
     class Sorted(fss.Schema):
-        schema = {
-            "parts": fss.File(
-                fmt="part-{part:d}.parquet",
-                min=0,
-                sort=lambda m: m.kwargs["part"],
-            ),
-        }
+        schema = {"parts": fss.File(
+            fmt="part-{part:d}.parquet",
+            min=0,
+            sort=lambda m: m.kwargs["part"],
+        )}  # fmt: skip
 
     box = Box.bind(box_path)
     if not isinstance(box, Box):

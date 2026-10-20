@@ -48,15 +48,15 @@ def test_plain_and_mixin_dataclasses_round_trip(tmp_path: Path) -> None:
     assert fss.raise_exn(bound.fixed.load()) == Manifest("fixed", [Child(2)])
     assert fss.raise_exn(bound.fixed.load(Manifest)) == Manifest("fixed", [Child(2)])
     assert bound.fixed.load(object) == Manifest("fixed", [Child(2)])
-    with pytest.raises(TypeError, match=re.escape(em.Load.subclass(bound.fixed.path, "Manifest", "MixinModel"))):
-        bound.fixed.load(MixinModel)
+    clash = bound.fixed.load(MixinModel)
+    assert isinstance(clash, TypeError) and str(clash) == em.Load.subclass(bound.fixed.path, "Manifest", "MixinModel")
     assert fss.raise_exn(bound.matched[0].load()) == Manifest("matched", [Child(3)])
     assert fss.raise_exn(bound.matched[0].load(Manifest)) == Manifest("matched", [Child(3)])
     assert fss.raise_exn(bound.mixin.load()) == MixinModel(4)
 
 
 def test_orjson_backend_and_stdlib_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    encoder, decoder = _mashumaro_json._json_codecs(Manifest)
+    encoder, decoder = _mashumaro_json._json_codecs_exn(Manifest)
     assert type(encoder).__module__ == type(decoder).__module__ == "mashumaro.codecs.orjson"
 
     real_import = builtins.__import__
@@ -74,7 +74,7 @@ def test_orjson_backend_and_stdlib_fallback(tmp_path: Path, monkeypatch: pytest.
 
     with monkeypatch.context() as import_patch:
         import_patch.setattr(builtins, "__import__", without_orjson)
-        fallback_encoder, fallback_decoder = _mashumaro_json._json_codecs(Manifest)
+        fallback_encoder, fallback_decoder = _mashumaro_json._json_codecs_exn(Manifest)
         path = tmp_path / "fallback.json"
         fss.put(path, Manifest("a", []))
         assert path.read_text().startswith("{")
@@ -99,7 +99,7 @@ def test_missing_mashumaro_error_names_extra(monkeypatch: pytest.MonkeyPatch) ->
         import_patch.setattr(builtins, "__import__", without_mashumaro)
         assert without_mashumaro("json").__name__ == "json"
         with pytest.raises(TypeError, match=re.escape(em.Json.EXTRA)):
-            _mashumaro_json._json_codecs(Manifest)
+            _mashumaro_json._json_codecs_exn(Manifest)
 
 
 def test_raw_path_and_save_writes_take_precedence(tmp_path: Path) -> None:

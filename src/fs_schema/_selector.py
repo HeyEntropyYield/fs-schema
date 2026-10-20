@@ -3,7 +3,8 @@ from typing import Final
 
 import fs_schema._errmsg as em
 
-from ._fmt import CaptureMap, CompiledFormat, FmtField, FmtLike, ParsedCaptures
+from ._fmt import CaptureMap, CompiledFormat, FmtLike, ParsedCaptures
+from ._types import FmtFieldT
 
 
 class Selector:
@@ -32,7 +33,8 @@ class Selector:
             CaptureMap(matched.groupdict()),
         )
 
-    def format(self, *args: FmtField, **kwargs: FmtField) -> str:
+    def format(self, *args: FmtFieldT, **kwargs: FmtFieldT) -> str:
+        """Exception: raises to support chaining"""
         if self._fmt is None:
             raise TypeError(em.Fmt.NONE)
         basename = self._fmt.format(*args, **kwargs)

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 import pytest
+from pytest_params import params
 
 import fs_schema as fss
 from fs_schema import Dir, File, MismatchErr, Schema, _ops
@@ -197,7 +198,7 @@ def test_collection_create_writes_into_a_symlinked_member_directory(world: World
     assert (world.real_dir / "inner.txt").read_text() == "changed"
 
 
-@pytest.mark.parametrize("points_at", ["real", "gone"])
+@params("points_at", [("real", "real"), ("gone", "gone")])
 def test_dir_create_raises_over_a_file_or_dangling_symlink(world: World, points_at: str) -> None:
     (world.root / "sub").symlink_to(world.real if points_at == "real" else world.gone)
     with pytest.raises(FileExistsError):
@@ -263,15 +264,12 @@ def test_bind_chains_through_a_link_to_a_link(world: World) -> None:
     assert fss.raise_mismatch(Tree.bind(world.root)).note.read_text() == "body"
 
 
-@pytest.mark.parametrize(
-    ("link", "target", "kind"),
-    [
-        ("note.txt", "real_dir", "file"),
-        ("sub", "real", "directory"),
-        ("note.txt", "gone", "file"),
-        ("sub", "gone", "directory"),
-    ],
-)
+@params(("link", "target", "kind"), [
+    ("file to directory", "note.txt", "real_dir", "file"),
+    ("directory to file", "sub", "real", "directory"),
+    ("dangling file", "note.txt", "gone", "file"),
+    ("dangling directory", "sub", "gone", "directory"),
+])  # fmt: skip
 def test_bind_rejects_a_wrong_kind_or_dangling_fixed_symlink(world: World, link: str, target: str, kind: str) -> None:
     (world.root / "note.txt").symlink_to(world.real)
     (world.root / "sub").symlink_to(world.real_dir)
@@ -290,13 +288,10 @@ def test_bind_treats_an_optional_dangling_symlink_as_absent(world: World) -> Non
     assert bound.sub is None
 
 
-@pytest.mark.parametrize(
-    ("link", "target", "kind"),
-    [
-        ("note.txt", "real_dir", "file"),
-        ("sub", "real", "directory"),
-    ],
-)
+@params(("link", "target", "kind"), [
+    ("file to directory", "note.txt", "real_dir", "file"),
+    ("directory to file", "sub", "real", "directory"),
+])  # fmt: skip
 def test_bind_rejects_an_optional_symlink_of_the_wrong_kind(world: World, link: str, target: str, kind: str) -> None:
     (world.root / link).symlink_to(_target(world, target))
     err = Loose.bind(world.root)
@@ -343,7 +338,7 @@ def test_bind_names_dangling_symlinks_in_a_count_mismatch(world: World) -> None:
     assert str(err) == em.Bind.count(low=1, high=None, position=0, found=0, dangling=["b.png"], path=world.root)
 
 
-@pytest.mark.parametrize("points_at", ["real", "gone"])
+@params("points_at", [("real", "real"), ("gone", "gone")])
 def test_bind_rejects_a_root_symlink_that_is_not_a_live_directory(world: World, points_at: str) -> None:
     link = world.root / "link"
     link.symlink_to(world.real if points_at == "real" else world.gone)
@@ -428,7 +423,7 @@ def test_link_to_accepts_a_missing_target_and_makes_a_dangling_link(world: World
     assert not world.gone.exists()
 
 
-@pytest.mark.parametrize("kind", ["empty", "full"])
+@params("kind", [("empty", "empty"), ("full", "full")])
 def test_link_to_does_not_replace_a_real_directory(world: World, kind: str) -> None:
     target = world.real_dir if kind == "full" else world.root / "empty"
     target.mkdir(exist_ok=True)

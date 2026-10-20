@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 from beartype.roar import BeartypeCallHintParamViolation
+from pytest_params import params  # pyright: ignore[reportUnknownVariableType]
 
 import fs_schema
 from fs_schema import MismatchErr, _fmt, _schema
@@ -55,19 +56,16 @@ def test_files_is_the_single_identity_token() -> None:
     assert repr(_schema.FILES) == "FILES"
 
 
-@pytest.mark.parametrize(
-    ("kwargs", "message"),
-    [
-        ({}, em.Node.NEEDS),
-        ({"fmt": "{unclosed"}, "expected .}."),
-        ({"match": "("}, "unterminated subpattern"),
-        ({"name": "value", "fmt": "{value}"}, em.Node.NAME_FMT),
-        ({"name": "value", "min": -1}, em.Node.MIN),
-        ({"fmt": "{value}", "min": 2, "max": 1}, em.Node.MAX),
-        ({"name": "value", "max": 2}, em.Node.EXACT_MAX),
-        ({"name": "value", "min": 2}, em.Node.EXACT_MIN),
-    ],
-)
+@params(("kwargs", "message"), [
+    ("empty", {}, em.Node.NEEDS),
+    ("unclosed", {"fmt": "{unclosed"}, "expected .}."),
+    ("bad match", {"match": "("}, "unterminated subpattern"),
+    ("name and fmt", {"name": "value", "fmt": "{value}"}, em.Node.NAME_FMT),
+    ("negative min", {"name": "value", "min": -1}, em.Node.MIN),
+    ("max below min", {"fmt": "{value}", "min": 2, "max": 1}, em.Node.MAX),
+    ("exact max", {"name": "value", "max": 2}, em.Node.EXACT_MAX),
+    ("exact min", {"name": "value", "min": 2}, em.Node.EXACT_MIN),
+])  # fmt: skip
 def test_declaration_semantic_failures(kwargs: dict[str, object], message: str) -> None:
     with pytest.raises(re.error if kwargs.get("match") == "(" else ValueError, match=message):
         _schema.File(**kwargs)  # pyright: ignore[reportArgumentType, reportCallIssue]
@@ -171,7 +169,7 @@ def test_skip_mismatch_drops_failed_file_matches_and_bad_directories(tmp_path: P
 def test_match_only_format_rejected() -> None:
     declaration = _schema.File(match=r"part-.+", min=0)
     with pytest.raises(TypeError, match=re.escape(em.Fmt.NONE)):
-        _schema._format_node(declaration)
+        declaration.selector.format()
 
 
 def test_exact_name_rejects_collection_only_flags() -> None:

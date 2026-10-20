@@ -1,12 +1,15 @@
 # pyright: reportPrivateUsage=false
 from datetime import date, datetime, time
+from decimal import Decimal
+from functools import partial
 from typing import get_args
 
 import pytest
 from beartype.roar import BeartypeCallHintParamViolation
+from pytest_params import params  # pyright: ignore[reportUnknownVariableType]
 
 from fs_schema import _errmsg as em
-from fs_schema import _fmt
+from fs_schema import _fmt, _fmt_spec, _types
 
 
 def test_capture_map_supports_keys_attributes_and_mapping_collisions() -> None:
@@ -99,35 +102,53 @@ def test_malformed_pattern_surfaces_native_failure() -> None:
         _fmt.CompiledFormat("{unclosed")
 
 
-def test_invalid_strftime_directives_are_plain_string_formats() -> None:
-    assert not _fmt._is_strftime_spec("%")
-    assert not _fmt._is_strftime_spec("%Q")
-
-
-def test_time_only_capture_fails_at_parse_boundary() -> None:
-    compiled = _fmt.CompiledFormat("{value:%H:%M}")
+@params("pattern", [("clock", "{value:%H:%M}"), ("named", "{value:tt}")])
+def test_time_only_capture_fails_when_the_pattern_is_compiled(pattern: str) -> None:
     with pytest.raises(TypeError, match=em.Fmt.TIME):
-        compiled.parse("19:51")
+        _fmt.CompiledFormat(pattern)
 
 
-def test_field_enum_values_are_format_field_prototypes() -> None:
-    assert tuple(_fmt._FormatFieldTemplate) == (
-        _fmt._FormatFieldTemplate.STRING,
-        _fmt._FormatFieldTemplate.INTEGER,
-        _fmt._FormatFieldTemplate.DATETIME,
-    )
-    assert tuple(member.value for member in _fmt._FormatFieldTemplate) == (
-        _fmt.FormatField("", 0),
-        _fmt.FormatField("", 0, "d"),
-        _fmt.FormatField("", 0, "%Y"),
-    )
-    assert all(type(member.value) is _fmt.FormatField for member in _fmt._FormatFieldTemplate)
+def test_time_value_is_rejected_if_parse_yields_one() -> None:
+    with pytest.raises(TypeError, match=em.Fmt.TIME):
+        _fmt_spec.value_exn(time(19, 51))
+
+
+@params(("pattern", "kind"), [
+    ("float", "{value:f}", "float"),
+    ("percent", "{value:%}", "float"),
+    ("decimal", "{value:F}", "Decimal"),
+])  # fmt: skip
+def test_other_parsed_types_fail_when_the_pattern_is_compiled(pattern: str, kind: str) -> None:
+    with pytest.raises(TypeError, match=em.Fmt.value(kind)):
+        _fmt.CompiledFormat(pattern)
+
+
+def test_strftime_spec_with_a_bad_directive_fails() -> None:
+    # Parser accepts this because it contains %Y. strptime rejects %Q
+    with pytest.raises(TypeError, match=em.Fmt.value("%Y%Q")):
+        _fmt.CompiledFormat("{value:%Y%Q}")
+
+
+def test_unknown_converter_is_rejected() -> None:
+    def odd(_text: str, _match: object) -> str: ...
+
+    with pytest.raises(TypeError, match=em.Fmt.value("function")):
+        _fmt_spec._sample(partial(odd))
+    with pytest.raises(TypeError, match=em.Fmt.value("object")):
+        _fmt_spec._sample(object())
+
+
+def test_named_date_spec_parses_datetime() -> None:
+    compiled = _fmt.CompiledFormat("{value:ti}")
+    parsed = compiled.parse("2001-02-03T04:05:06")
+    assert parsed is not None
+    assert parsed.kwargs == {"value": datetime(2001, 2, 3, 4, 5, 6)}
 
 
 def test_format_types_are_exact_and_atomic_inputs_are_beartyped() -> None:
-    assert set(get_args(_fmt._ParserField)) == {str, int, date, time, datetime}
-    assert set(get_args(_fmt.FmtField)) == {str, int, datetime}
+    assert set(get_args(_types.FmtFieldT)) == {str, int, datetime}
     assert set(get_args(_fmt.CaptureField)) == {str, int, datetime, type(None)}
+    assert set(get_args(_fmt_spec._Field)) == {str, int, float, Decimal, date, time, datetime}
 
     with pytest.raises(BeartypeCallHintParamViolation):
         _fmt.dt(1)  # pyright: ignore[reportArgumentType]

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from beartype.roar import BeartypeCallHintParamViolation
+from pytest_params import params  # pyright: ignore[reportUnknownVariableType]
 
 from fs_schema import _errmsg as em
 from fs_schema import _ops
@@ -148,10 +149,12 @@ def test_link_to_leaves_the_previous_file_when_the_link_fails(tmp_path: Path) ->
     assert not any(path.name.startswith(".") for path in tmp_path.iterdir())
 
 
-@pytest.mark.parametrize(
-    ("follow", "clean"),
-    [(True, False), (True, True), (False, False), (False, True)],
-)
+@params(("follow", "clean"), [
+    ("follow", True, False),
+    ("follow and clean", True, True),
+    ("link", False, False),
+    ("link and clean", False, True),
+])  # fmt: skip
 def test_copy_to_file_follow_and_clean(tmp_path: Path, follow: bool, clean: bool) -> None:
     real = tmp_path / "real.txt"
     _ = real.write_text("body")
@@ -217,10 +220,11 @@ def test_copy_to_clean_unlinks_a_file_or_symlink(tmp_path: Path) -> None:
     assert (victim / "inside.txt").read_text() == "inside"
 
 
-@pytest.mark.parametrize(
-    "layout",
-    ["same", "dest-inside-source", "source-inside-dest"],
-)
+@params("layout", [
+    ("same", "same"),
+    ("dest inside source", "dest-inside-source"),
+    ("source inside dest", "source-inside-dest"),
+])  # fmt: skip
 def test_copy_to_refuses_overlapping_paths(tmp_path: Path, layout: str) -> None:
     src = tmp_path / "src"
     src.mkdir()

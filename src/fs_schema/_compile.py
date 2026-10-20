@@ -50,7 +50,7 @@ def _is_dot_dir(node: Node, *, alias: bool) -> bool:
     return isinstance(node, Dir) and node.name == "." and bool(node.alias) is alias
 
 
-def _validate_schema_node(class_name: str, key: object, node: Node) -> None:
+def _compile_local_node_exn(class_name: str, key: object, node: Node) -> None:
     if _is_dot_dir(node, alias=False):
         raise _bad(class_name, key, em.Node.DOT_ALIAS)
     if node.name and not is_safe_basename(node.name) and not _is_dot_dir(node, alias=True):
@@ -65,35 +65,36 @@ def aliased_file(alias: str, source: File[_L]) -> File[_L]:
     return source if source.alias == alias else replace(source, alias=alias)
 
 
-def _identity(defn: Defn) -> str | None:
+def _merge_identity(defn: Defn) -> str | None:
     node = defn_node(defn)
     return node.alias or node.name or node.fmt or None
 
 
-def _merge_defns(base: Sequence[Defn], local: Sequence[Defn]) -> tuple[Defn, ...]:
+def _merge_defns_exn(base: Sequence[Defn], local: Sequence[Defn]) -> tuple[Defn, ...]:
     merged = list(base)
-    positions = {identity: index for index, defn in enumerate(base) if (identity := _identity(defn)) is not None}
+    positions = {identity: index for index, defn in enumerate(base) if (identity := _merge_identity(defn)) is not None}
     for defn in local:
-        identity = _identity(defn)
+        identity = _merge_identity(defn)
         if identity is None or identity not in positions:
             if identity is not None:
                 positions[identity] = len(merged)
             merged.append(defn)
         else:
-            merged[positions[identity]] = _merge_one(merged[positions[identity]], defn)
+            merged[positions[identity]] = _merge_one_exn(merged[positions[identity]], defn)
     return tuple(merged)
 
 
-def _merge_one(base: Defn, local: Defn) -> Defn:
+def _merge_one_exn(base: Defn, local: Defn) -> Defn:
+    # DirDefn raises
     if isinstance(base, DirDefn) and isinstance(local, DirDefn):
-        return DirDefn(local.defn, _merge_defns(base.defns, local.defns), local.child_type or base.child_type)
+        return DirDefn(local.defn, _merge_defns_exn(base.defns, local.defns), local.child_type or base.child_type)
     return local
 
 
 def _children_satisfy(actual: Sequence[Defn], required: Sequence[Defn]) -> bool:
     matched_anonymous: set[int] = set()
     for required_child in required:
-        identity = _identity(required_child)
+        identity = _merge_identity(required_child)
         if identity is None:
             found = next(
                 (
@@ -107,7 +108,7 @@ def _children_satisfy(actual: Sequence[Defn], required: Sequence[Defn]) -> bool:
                 return False
             matched_anonymous.add(found)
             continue
-        actual_child = next((candidate for candidate in actual if _identity(candidate) == identity), None)
+        actual_child = next((candidate for candidate in actual if _merge_identity(candidate) == identity), None)
         if actual_child is None or not _defn_satisfies(actual_child, required_child):
             return False
     return True
@@ -121,7 +122,9 @@ def _defn_satisfies(actual: Defn, required: Defn) -> bool:
     )
 
 
-def _make_inline_schema(class_name: str, module: str, position: int, layout: dict[object, object]) -> type[Schema]:
+def _compile_inline_schema_exn(
+    class_name: str, module: str, position: int, layout: dict[object, object]
+) -> type[Schema]:
     generated = type(
         f"_{class_name}Child{position}",
         (Schema,),
@@ -132,7 +135,7 @@ def _make_inline_schema(class_name: str, module: str, position: int, layout: dic
     return generated
 
 
-def _directory_defn(class_name: str, key: object, node: Dir[Schema], child_type: type[Schema]) -> DirDefn:
+def _compile_directory_defn_exn(class_name: str, key: object, node: Dir[Schema], child_type: type[Schema]) -> DirDefn:
     child_root = schema_defn_for(child_type)
     compiled = DirDefn(node, child_root.defns, child_type)
     if node.schema is not None:
@@ -158,7 +161,8 @@ def _raw_schema(cls: type[Schema]) -> object:
     return cls.schema if "schema" in cls.__dict__ else {}
 
 
-def _compile_local_defns(cls: type[Schema]) -> tuple[Defn, ...]:
+def _compile_local_defns_exn(cls: type[Schema]) -> tuple[Defn, ...]:
+    # All usages of File/Dir are here, and they also raise (Node ctor)
     raw = _raw_schema(cls)
     if not _is_raw_mapping(raw):
         raise _invalid_schema(cls.__name__, em.Schema.Body.MUST_DICT)
@@ -174,33 +178,33 @@ def _compile_local_defns(cls: type[Schema]) -> tuple[Defn, ...]:
                         file = item
                     else:
                         raise _invalid_schema(cls.__name__, f"key {key!r} member {item!r} must be a str or File")
-                    _validate_schema_node(cls.__name__, key, file)
+                    _compile_local_node_exn(cls.__name__, key, file)
                     defns.append(file)
             case str() as name, _ if _is_raw_mapping(value):
                 node: Dir[Schema] = Dir(name=name)
-                _validate_schema_node(cls.__name__, key, node)
-                child_type = _make_inline_schema(cls.__name__, cls.__module__, len(defns), value)
-                defns.append(_directory_defn(cls.__name__, key, node, child_type))
+                _compile_local_node_exn(cls.__name__, key, node)
+                child_type = _compile_inline_schema_exn(cls.__name__, cls.__module__, len(defns), value)
+                defns.append(_compile_directory_defn_exn(cls.__name__, key, node, child_type))
             case lhs, _ if _is_schema_dir(lhs) and _is_raw_mapping(value):
                 node = lhs
-                _validate_schema_node(cls.__name__, key, node)
-                child_type = _make_inline_schema(cls.__name__, cls.__module__, len(defns), value)
-                defns.append(_directory_defn(cls.__name__, key, node, child_type))
+                _compile_local_node_exn(cls.__name__, key, node)
+                child_type = _compile_inline_schema_exn(cls.__name__, cls.__module__, len(defns), value)
+                defns.append(_compile_directory_defn_exn(cls.__name__, key, node, child_type))
             case str() as name, rhs if is_schema_type(rhs):
                 node = Dir(name=name)
-                _validate_schema_node(cls.__name__, key, node)
-                defns.append(_directory_defn(cls.__name__, key, node, rhs))
+                _compile_local_node_exn(cls.__name__, key, node)
+                defns.append(_compile_directory_defn_exn(cls.__name__, key, node, rhs))
             case lhs, rhs if _is_schema_dir(lhs) and is_schema_type(rhs):
                 node = lhs
-                _validate_schema_node(cls.__name__, key, node)
-                defns.append(_directory_defn(cls.__name__, key, node, rhs))
+                _compile_local_node_exn(cls.__name__, key, node)
+                defns.append(_compile_directory_defn_exn(cls.__name__, key, node, rhs))
             case str() as alias, str() as name:
                 file = File(name=name, alias=alias)
-                _validate_schema_node(cls.__name__, key, file)
+                _compile_local_node_exn(cls.__name__, key, file)
                 defns.append(file)
             case str() as alias, File() as source:
-                file = aliased_file(alias, source)
-                _validate_schema_node(cls.__name__, key, file)
+                file = source if source.alias == alias else replace(source, alias=alias)
+                _compile_local_node_exn(cls.__name__, key, file)
                 defns.append(file)
             case FilesKey() as token, _ if token is FILES:
                 raise _invalid_schema(cls.__name__, em.Schema.Body.files(key))
@@ -216,45 +220,50 @@ _UNSAFE_SCHEMA_DUNDERS: Final = frozenset(
 )
 
 
-def validate_schema_bases(class_name: str, bases: tuple[type[object], ...]) -> None:
+def schema_ctor_check_bases(class_name: str, bases: tuple[type[object], ...]) -> Exception | None:
     if len(bases) != 1 or not is_schema_type(bases[0]):
-        raise TypeError(em.Schema.one_base(class_name))
+        return TypeError(em.Schema.one_base(class_name))
+    return None
 
 
-def validate_schema_class(cls: type[Schema]) -> None:
+def schema_ctor_check_class(cls: type[Schema]) -> Exception | None:
     if type(cls) is not SchemaCls:
-        raise TypeError(em.Schema.metaclass(cls.__name__))
-    # Bases already raised in SchemaCls.__new__ via validate_schema_bases.
-    # compile_schema asserts the base is still a Schema.
+        return TypeError(em.Schema.metaclass(cls.__name__))
 
     inherited_members = {
         name for ancestor in cls.__mro__[1:] for name in ancestor.__dict__ if not name.startswith("__")
     } - {"schema"}
     if unsafe := cls.__dict__.keys() & (inherited_members | _CAPTURE_MEMBERS | _UNSAFE_SCHEMA_DUNDERS):
-        raise TypeError(em.Schema.override(cls.__name__, sorted(unsafe)[0]))
+        return TypeError(em.Schema.override(cls.__name__, sorted(unsafe)[0]))
+    return None
 
 
-def compile_schema(cls: type[Schema]) -> None:
+def schema_ctor_compile_defn(cls: type[Schema]) -> Exception | None:
     base = cls.__bases__[0]
     if not is_schema_type(base):
         raise AssertionError("validated Schema class lost its Schema base")
-    local_defns = _compile_local_defns(cls)
-    try:
+    try:  # DirDefn can raise ValueError
+        local_defns = _compile_local_defns_exn(cls)  # Uses File/Dir (Node), which fails fast
         _ = DirDefn(Dir(name="."), local_defns)
-        defns = _merge_defns(schema_defn_for(base).defns, local_defns)
+        defns = _merge_defns_exn(schema_defn_for(base).defns, local_defns)  # DirDefn
         type.__setattr__(cls, "_schema_defn", DirDefn(Dir(name="."), defns))
+    except TypeError as error:
+        return error
     except ValueError as error:
-        raise _invalid_schema(cls.__name__, str(error)) from error
+        raised = _invalid_schema(cls.__name__, str(error))
+        raised.__cause__ = error
+        return raised
+    return None
 
 
-def _installed_child_names(ancestor: type) -> frozenset[str]:
+def _schema_ctor_installed_names(ancestor: type) -> frozenset[str]:
     raw = vars(ancestor).get("_child_attrs")
     if isinstance(raw, frozenset):
         return typing.cast(frozenset[str], raw)
     return frozenset()
 
 
-def validate_child_shadows(cls: type[Schema]) -> None:
+def schema_ctor_check_defn_shadows(cls: type[Schema]) -> Exception | None:
     for defn in schema_defn_for(cls).defns:
         node = defn_node(defn)
         for name in (node.alias or None, normalize_name(node.name) if node.name else None):
@@ -262,11 +271,12 @@ def validate_child_shadows(cls: type[Schema]) -> None:
                 continue
             # An installed child on a parent is that child, not a reserved member.
             reserved = name in _CAPTURE_MEMBERS or any(
-                name in ancestor.__dict__ and name not in _installed_child_names(ancestor)
+                name in ancestor.__dict__ and name not in _schema_ctor_installed_names(ancestor)
                 for ancestor in (*cls.__mro__, *type(cls).__mro__)
             )
             if reserved:
-                raise _invalid_schema(cls.__name__, em.Schema.Body.shadow(name))
+                return _invalid_schema(cls.__name__, em.Schema.Body.shadow(name))
+    return None
 
 
 def _declaration_with(node: Node) -> object:

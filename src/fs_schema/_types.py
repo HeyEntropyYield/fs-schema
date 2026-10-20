@@ -1,17 +1,19 @@
 import os
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import Field
+from datetime import datetime
 from pathlib import Path
 from typing import ClassVar, TypeAlias, TypeVar
 
 from typing_extensions import Protocol, runtime_checkable
 
-from ._fmt import FmtField
-
 # The invariant load value links LoadSpec callables to low-level load results.
 LoadT = TypeVar("LoadT")
 
 PathIsh: TypeAlias = str | os.PathLike[str]
+# A parsed template field: {n:d} -> int, {stem} -> str, dt() -> datetime
+FmtFieldT: TypeAlias = str | int | datetime
+FmtFields: TypeAlias = Mapping[str, FmtFieldT]
 
 Json: TypeAlias = dict[str, "Json"] | list["Json"] | str | int | float | bool | None
 JsonRo: TypeAlias = Mapping[str, "JsonRo"] | Sequence["JsonRo"] | str | int | float | bool | None
@@ -31,9 +33,7 @@ class DataclassInstance(Protocol):
 FileBody: TypeAlias = bytes | str | Path
 Puttable: TypeAlias = FileBody | HasSave | DataclassInstance
 
-CreateValue: TypeAlias = (
-    Puttable | Mapping[str, "CreateValue"] | Sequence[tuple[Mapping[str, FmtField], "CreateValue"]] | None
-)
+CreateValue: TypeAlias = Puttable | Mapping[str, "CreateValue"] | Sequence[tuple[FmtFields, "CreateValue"]] | None
 CreateTop: TypeAlias = Puttable | PathIsh | Mapping[str, object] | Sequence[object] | None
 
 # A class is resolved through the target file's format codec. With the

@@ -181,8 +181,12 @@ class Fmt:
     TIME: Final = "time captures are unsupported"
 
     @staticmethod
+    def value(kind: str) -> str:
+        return f"{kind} captures are unsupported"
+
+    @staticmethod
     def capture(name: str) -> str:
-        return f"capture {name!r} disagrees with the enclosing stamp"
+        return f"capture {name!r} disagrees with the enclosing format field"
 
     @staticmethod
     def basename(basename: str) -> str:
@@ -231,10 +235,10 @@ class Create:
         return _fix(_is_a(f"{key!r}", "collection"), "pass a basename mapping or (captures, payload) pairs")
 
     @staticmethod
-    def file(key: str, missing: Sequence[str], stamped: Sequence[str]) -> str:
+    def file(key: str, missing: Sequence[str], bound: Sequence[str]) -> str:
         parts = [f"missing captures {list(missing)}"]
-        if stamped:
-            parts.append(f"already stamped {list(stamped)}")
+        if bound:
+            parts.append(f"already bound {list(bound)}")
         detail = "; ".join(parts)
         return _fix(f"{_is_a(f'{key!r}', 'file collection')}; {detail}", "pass (captures, payload) pairs")
 

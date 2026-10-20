@@ -25,7 +25,7 @@ class _Decoder(Protocol[_T_co]):
     def decode(self, data: str | bytes | bytearray) -> _T_co: ...
 
 
-def _json_codecs(model: type[_T]) -> tuple[_Encoder[_T], _Decoder[_T]]:
+def _json_codecs_exn(model: type[_T]) -> tuple[_Encoder[_T], _Decoder[_T]]:
     try:
         from mashumaro.codecs.json import JSONDecoder, JSONEncoder
     except ModuleNotFoundError as error:
@@ -47,26 +47,28 @@ def _json_codecs(model: type[_T]) -> tuple[_Encoder[_T], _Decoder[_T]]:
     return cast(_Encoder[_T], encoder), cast(_Decoder[_T], decoder)
 
 
-def _check_json(path: Path) -> None:
+def _check_json_exn(path: Path) -> None:
     if path.suffix.casefold() != ".json":
         raise TypeError(em.Json.suffix(path.suffix or "<no suffix>"))
 
 
-def _check_model(model: type[object]) -> None:
+def _check_model_exn(model: type[object]) -> None:
     if not is_dataclass(model):
         raise TypeError(em.Json.model(model.__name__))
 
 
 def decode_json(path: Path, model: type[_T]) -> _T:
-    _check_json(path)
-    _check_model(model)
-    _, decoder = _json_codecs(model)
-    return decoder.decode(path.read_bytes())
+    """Exception: api intentionally raises"""
+    _check_json_exn(path)  # caller error
+    _check_model_exn(model)  # caller error
+    _, decoder = _json_codecs_exn(model)  # missing extra
+    return decoder.decode(path.read_bytes())  # OSError
 
 
 def encode_json(path: Path, value: DataclassInstance) -> str | bytes:
-    _check_json(path)
+    """Exception: api intentionally raises"""
+    _check_json_exn(path)  # caller error
     model = type(value)
-    _check_model(model)
-    encoder, _ = _json_codecs(model)
+    _check_model_exn(model)  # caller error
+    encoder, _ = _json_codecs_exn(model)  # missing extra
     return encoder.encode(value)
