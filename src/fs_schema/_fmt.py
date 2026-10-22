@@ -104,3 +104,7 @@ def captures(*args: FmtFieldT, **kwargs: FmtFieldT) -> Captures:
 
 def dt(pattern: str, name: str = "ts") -> FmtLike:
     return f"{{{name}:{pattern}}}"
+
+
+def is_safe_basename(name: str) -> bool:
+    return bool(name) and name not in {".", ".."} and "\0" not in name and "/" not in name and "\\" not in name

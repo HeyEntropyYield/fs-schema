@@ -9,24 +9,10 @@ from typing_extensions import TypeIs
 
 import fs_schema._errmsg as em
 
-from ._fmt import Captures, captures
-from ._schema import (
-    Defn,
-    DirDefn,
-    File,
-    FixedDir,
-    FixedFile,
-    Match,
-    Matches,
-    Template,
-    capture_names,
-    defn_node,
-    format_any_exn,
-    is_safe_basename,
-    plan_fixed,
-    validate_capture_names_exn,
-    write_plan_exn,
-)
+from ._decl import Defn, DirDefn, File, Match, capture_names, defn_node, validate_capture_names_exn
+from ._fmt import Captures, captures, is_safe_basename
+from ._plan import format_any_exn, plan_fixed
+from ._schema import FixedDir, FixedFile, Matches, SchemaCls, Template
 from ._types import CreateTop, FmtFields, PathIsh, Puttable
 
 _Member: TypeAlias = tuple[FmtFields | Captures, CreateTop]
@@ -38,6 +24,20 @@ class _Absent:
 
 
 _ABSENT: _Absent = _Absent()
+
+
+def write_plan_exn(directory: FixedDir, spec: Mapping[str, CreateTop] | None = None, /, **children: CreateTop) -> None:
+    _write_plan_bound_exn(directory)
+    merged: dict[str, CreateTop] = dict(spec or {})
+    if overlap := merged.keys() & children.keys():
+        raise TypeError(em.Create.duplicate(sorted(overlap)))
+    merged.update(children)
+    apply_create_exn(directory, merged)
+
+
+def _write_plan_bound_exn(node: object) -> None:
+    if isinstance(type(node), SchemaCls):
+        raise TypeError(em.Create.bound(type(node).__name__))
 
 
 def apply_create_exn(directory: FixedDir, spec: Mapping[str, CreateTop]) -> None:

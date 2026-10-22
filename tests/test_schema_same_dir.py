@@ -5,7 +5,8 @@ import pytest
 
 import fs_schema as fss
 from fs_schema import _errmsg as em
-from fs_schema._schema import DirDefn, File, Schema
+from fs_schema._decl import DirDefn, File
+from fs_schema._schema import Schema
 
 
 class Letter(fss.Schema):

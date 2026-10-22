@@ -6,7 +6,7 @@ from pathlib import Path
 from typing_extensions import assert_type
 
 import fs_schema as fss
-from fs_schema import _compile, _fmt, _ops, _schema
+from fs_schema import _bind, _compile, _decl, _fmt, _ops, _plan, _schema
 from fs_schema._std_ext import CacheSeq
 
 
@@ -16,20 +16,20 @@ def capture_predicate(args: tuple[_fmt.CaptureField, ...], kwargs: _fmt.CaptureM
 
 
 def check() -> None:
-    file_defn: _schema.Defn = _schema.File[object](name="value.txt")
-    dir_defn = _schema.DirDefn(_schema.Dir(name="directory"), (file_defn,))
-    fixed = _schema.FixedFile(Path("value.txt"), _schema.File[object](name="value.txt"))
-    loaded = _schema.FixedFile[int](Path("loaded"), _schema.File(name="loaded", schema=lambda _path: 1))
+    file_defn: _decl.Defn = _decl.File[object](name="value.txt")
+    dir_defn = _decl.DirDefn(_decl.Dir(name="directory"), (file_defn,))
+    fixed = _schema.FixedFile(Path("value.txt"), _decl.File[object](name="value.txt"))
+    loaded = _schema.FixedFile[int](Path("loaded"), _decl.File(name="loaded", schema=lambda _path: 1))
     captures = _fmt.ParsedCaptures((), _fmt.CaptureMap({"part": 1}))
-    match = _schema._FileMatch(Path("part-1"), captures, _schema.File(name="part-1"))
-    plain = _schema.Matches(Path("root"), (match,), _schema.File(match=r"part-(.+)"))
-    template = _schema.Template(Path("root"), (match,), _schema.File(fmt="part-{part:d}"))
-    dir_match = _schema._DirMatch(Path("directory"), _fmt.ParsedCaptures((), _fmt.CaptureMap({})), (), dir_defn)
+    match = _schema.FileMatch(Path("part-1"), captures, _decl.File(name="part-1"))
+    plain = _schema.Matches(Path("root"), (match,), _decl.File(match=r"part-(.+)"))
+    template = _schema.Template(Path("root"), (match,), _decl.File(fmt="part-{part:d}"))
+    dir_match = _schema.DirMatch(Path("directory"), _fmt.ParsedCaptures((), _fmt.CaptureMap({})), (), dir_defn)
     directories = _schema.Matches(Path("root"), (dir_match,), dir_defn)
     dir_template = _schema.Template(Path("root"), (dir_match,), dir_defn)
     directory = _schema.FixedDir(Path("root"), (fixed, plain, template, directories), dir_defn)
     listing: CacheSeq[Path] = CacheSeq(lambda: [Path("part-1")])
-    text_defn: _schema.File[str] = _schema.File(name="text", schema=lambda path: path.name)
+    text_defn: _decl.File[str] = _decl.File(name="text", schema=lambda path: path.name)
     text_template = _schema.Template(Path("root"), (), text_defn)
     aliased_text = _compile.aliased_file("text_alias", text_defn)
 
@@ -38,26 +38,26 @@ def check() -> None:
     accepts_located(directory)
     accepts_located(dir_match)
     accepts_match(dir_match)
-    assert_type(file_defn, _schema.File[object])
-    assert_type(aliased_text, _schema.File[str])
-    assert_type(dir_defn.defns, tuple[_schema.Defn, ...])
-    assert_type(fixed.defn, _schema.File[object])
-    assert_type(plain[0], _schema._FileMatch[object])
-    assert_type(plain[:], _schema.Matches[_schema._FileMatch[object], _schema.File[object]])
-    assert_type(template[:], _schema.Template[_schema._FileMatch[object], _schema.File[object]])
-    assert_type(template.find(capture_predicate), _schema._FileMatch[object] | None)
-    assert_type(plain.filter(capture_predicate), _schema.Matches[_schema._FileMatch[object], _schema.File[object]])
+    assert_type(file_defn, _decl.File[object])
+    assert_type(aliased_text, _decl.File[str])
+    assert_type(dir_defn.defns, tuple[_decl.Defn, ...])
+    assert_type(fixed.defn, _decl.File[object])
+    assert_type(plain[0], _schema.FileMatch[object])
+    assert_type(plain[:], _schema.Matches[_schema.FileMatch[object], _decl.File[object]])
+    assert_type(template[:], _schema.Template[_schema.FileMatch[object], _decl.File[object]])
+    assert_type(template.find(capture_predicate), _schema.FileMatch[object] | None)
+    assert_type(plain.filter(capture_predicate), _schema.Matches[_schema.FileMatch[object], _decl.File[object]])
     assert_type(
         template.filter(capture_predicate),
-        _schema.Template[_schema._FileMatch[object], _schema.File[object]],
+        _schema.Template[_schema.FileMatch[object], _decl.File[object]],
     )
-    assert_type(template.where(part=1), _schema.Template[_schema._FileMatch[object], _schema.File[object]])
-    assert_type(template.where(part=None), _schema.Template[_schema._FileMatch[object], _schema.File[object]])
-    assert_type(template.get(), _schema._FileMatch[object] | None)
-    assert_type(template.get(-1), _schema._FileMatch[object] | None)
-    assert_type(template.get(4, "missing"), _schema._FileMatch[object] | str)
-    assert_type(template.get(default=1), _schema._FileMatch[object] | int)
-    assert_type(template.get(4, None), _schema._FileMatch[object] | None)
+    assert_type(template.where(part=1), _schema.Template[_schema.FileMatch[object], _decl.File[object]])
+    assert_type(template.where(part=None), _schema.Template[_schema.FileMatch[object], _decl.File[object]])
+    assert_type(template.get(), _schema.FileMatch[object] | None)
+    assert_type(template.get(-1), _schema.FileMatch[object] | None)
+    assert_type(template.get(4, "missing"), _schema.FileMatch[object] | str)
+    assert_type(template.get(default=1), _schema.FileMatch[object] | int)
+    assert_type(template.get(4, None), _schema.FileMatch[object] | None)
     assert_type(template.format(part=1), _schema.FixedFile[object])
     assert_type(template.format(part=1).create(b"x"), _schema.FixedFile[object])
     assert_type(template.parse("part-1.txt"), _schema.FixedFile[object])
@@ -67,17 +67,17 @@ def check() -> None:
     assert_type(fixed.create("x"), _schema.FixedFile[object])
     assert_type(directory.create(), _schema.FixedDir)
     assert_type(loaded.load(), int | Exception)
-    assert_type(directories.defn, _schema.DirDefn)
-    assert_type(directories[0], _schema._DirMatch)
+    assert_type(directories.defn, _decl.DirDefn)
+    assert_type(directories[0], _schema.DirMatch)
     assert_type(directory[0], _schema._ChildView)
     assert_type(iter(directory), Iterator[_schema._ChildView])
-    assert_type(_schema._bind_matches(text_defn, listing, {}), _schema._MatchRes[_schema._FileMatch[str]])
-    assert_type(_schema._bind_matches(dir_defn, listing, {}), _schema._MatchRes[_schema._DirMatch])
-    assert_type(_schema._bind_fixed(Path("text"), text_defn, {}), _schema.FixedFile[str])
-    assert_type(_schema.plan_fixed(Path("text"), text_defn), _schema.FixedFile[str])
-    assert_type(_schema.plan_fixed(Path("directory"), dir_defn), _schema.FixedDir)
-    assert_type(_schema._bind_fixed(Path("directory"), dir_defn, {}), _schema.FixedDir | fss.MismatchErr)
-    assert_type(_schema._bind_children(Path("root"), dir_defn, {}), tuple[_schema.BoundChild, ...] | fss.MismatchErr)
+    assert_type(_bind._bind_matches(text_defn, listing, {}), _bind._MatchRes[_schema.FileMatch[str]])
+    assert_type(_bind._bind_matches(dir_defn, listing, {}), _bind._MatchRes[_schema.DirMatch])
+    assert_type(_bind._bind_fixed(Path("text"), text_defn, {}), _schema.FixedFile[str])
+    assert_type(_plan.plan_fixed(Path("text"), text_defn), _schema.FixedFile[str])
+    assert_type(_plan.plan_fixed(Path("directory"), dir_defn), _schema.FixedDir)
+    assert_type(_bind._bind_fixed(Path("directory"), dir_defn, {}), _schema.FixedDir | fss.MismatchErr)
+    assert_type(_bind.bind_children(Path("root"), dir_defn, {}), tuple[_schema.BoundChild, ...] | fss.MismatchErr)
 
     class Concrete(_schema.Schema):
         schema = {"child": {"value": "value.txt"}}
@@ -95,7 +95,7 @@ def check() -> None:
     assert Concrete.child.value  # pyright: ignore[reportUnknownMemberType]
 
     class Repeated(_schema.Schema):
-        schema = {_schema.Dir(fmt="run-{n:d}", alias="runs"): Concrete}
+        schema = {_decl.Dir(fmt="run-{n:d}", alias="runs"): Concrete}
 
     assert_type(Repeated.runs, type)
 
@@ -107,7 +107,7 @@ def check() -> None:
 
     def decode(path: Path) -> str: ...
 
-    text = _schema.FixedFile(Path("text"), _schema.File(name="text", schema=decode))
+    text = _schema.FixedFile(Path("text"), _decl.File(name="text", schema=decode))
     assert_type(text, _schema.FixedFile[str])
     assert_type(text.load(), str | Exception)
     assert_type(_ops.load(Path("value"), decode), str | Exception)

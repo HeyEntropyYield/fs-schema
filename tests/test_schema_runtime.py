@@ -10,18 +10,16 @@ from pytest_params import params  # pyright: ignore[reportUnknownVariableType]
 
 from fs_schema import Match
 from fs_schema import _errmsg as em
+from fs_schema._decl import Dir, DirDefn, File
 from fs_schema._fmt import CaptureField, CaptureMap, ParsedCaptures
 from fs_schema._schema import (
-    Dir,
-    DirDefn,
-    File,
+    DirMatch,
+    FileMatch,
     FixedDir,
     FixedFile,
     Matches,
     Schema,
     Template,
-    _DirMatch,
-    _FileMatch,
     _MissingDefault,
 )
 
@@ -53,8 +51,8 @@ def test_fixed_file_owns_declaration_path_and_performs_io(tmp_path: Path) -> Non
 
 def test_matches_and_collections_keep_observed_capture_values(tmp_path: Path) -> None:
     defn = File(fmt="{part:d}.txt", min=0)
-    first = _FileMatch(tmp_path / "2.txt", ParsedCaptures((), CaptureMap({"part": 2})), defn)
-    second = _FileMatch(tmp_path / "3.txt", ParsedCaptures((), CaptureMap({"part": 3})), defn)
+    first = FileMatch(tmp_path / "2.txt", ParsedCaptures((), CaptureMap({"part": 2})), defn)
+    second = FileMatch(tmp_path / "3.txt", ParsedCaptures((), CaptureMap({"part": 3})), defn)
     source = [first, second]
     collection = Template(tmp_path, source, defn)
     sliced = collection[:1]
@@ -78,17 +76,17 @@ def test_matches_and_collections_keep_observed_capture_values(tmp_path: Path) ->
 
 def test_collection_queries_preserve_shape_order_and_capture_semantics(tmp_path: Path) -> None:
     defn = File(match=r"(?P<kind>[^-]+)(?:-(?P<tag>[^-]+))?(?:-([^-]+))?", min=0)
-    first = _FileMatch(
+    first = FileMatch(
         tmp_path / "image",
         ParsedCaptures((None,), CaptureMap({"kind": "image", "tag": None})),
         defn,
     )
-    second = _FileMatch(
+    second = FileMatch(
         tmp_path / "image-raw-tail",
         ParsedCaptures(("tail",), CaptureMap({"kind": "image", "tag": "raw"})),
         defn,
     )
-    third = _FileMatch(
+    third = FileMatch(
         tmp_path / "data-raw-tail",
         ParsedCaptures(("tail",), CaptureMap({"kind": "data", "tag": "raw"})),
         defn,
@@ -164,8 +162,8 @@ def test_directory_iteration_covers_schema_root_and_bound_dir(tmp_path: Path) ->
 
 def test_next_on_a_collection_is_the_first_match(tmp_path: Path) -> None:
     defn = File(fmt="part-{part:d}.txt", min=0)
-    first = _FileMatch(tmp_path / "part-1.txt", ParsedCaptures((), CaptureMap({"part": 1})), defn)
-    second = _FileMatch(tmp_path / "part-2.txt", ParsedCaptures((), CaptureMap({"part": 2})), defn)
+    first = FileMatch(tmp_path / "part-1.txt", ParsedCaptures((), CaptureMap({"part": 1})), defn)
+    second = FileMatch(tmp_path / "part-2.txt", ParsedCaptures((), CaptureMap({"part": 2})), defn)
     node = Template(tmp_path, (first, second), defn)
     empty = Template(tmp_path, (), defn)
     assert next(empty, None) is None
@@ -175,8 +173,8 @@ def test_next_on_a_collection_is_the_first_match(tmp_path: Path) -> None:
 
 def test_where_none_is_a_positional_wildcard(tmp_path: Path) -> None:
     defn = File(fmt="{}_{}.txt", min=0)
-    first = _FileMatch(tmp_path / "first_000000.txt", ParsedCaptures(("first", "000000"), CaptureMap({})), defn)
-    second = _FileMatch(tmp_path / "second_000001.txt", ParsedCaptures(("second", "000001"), CaptureMap({})), defn)
+    first = FileMatch(tmp_path / "first_000000.txt", ParsedCaptures(("first", "000000"), CaptureMap({})), defn)
+    second = FileMatch(tmp_path / "second_000001.txt", ParsedCaptures(("second", "000001"), CaptureMap({})), defn)
     collection = Matches(tmp_path, (first, second), defn)
 
     assert tuple(collection.where(None, "000000")) == (first,)
@@ -186,8 +184,8 @@ def test_where_none_is_a_positional_wildcard(tmp_path: Path) -> None:
 def test_matches_and_templates_are_distinct_but_constructors_copy_collections(tmp_path: Path) -> None:
     plain = File(match=r"part-(.+)")
     formatted = File(fmt="part-{part:d}")
-    match = _FileMatch(tmp_path / "part-one", ParsedCaptures(("one",), CaptureMap({})), plain)
-    template_match = _FileMatch(tmp_path / "part-1", ParsedCaptures((), CaptureMap({"part": 1})), formatted)
+    match = FileMatch(tmp_path / "part-one", ParsedCaptures(("one",), CaptureMap({})), plain)
+    template_match = FileMatch(tmp_path / "part-1", ParsedCaptures((), CaptureMap({"part": 1})), formatted)
 
     matches = Matches(tmp_path, (match,), plain)
     template = Template(tmp_path, (template_match,), formatted)
@@ -235,7 +233,7 @@ def test_runtime_constructors_are_beartype_checked(tmp_path: Path) -> None:
 
 def test_directory_match_carries_its_defn_and_captures(tmp_path: Path) -> None:
     defn = DirDefn(Dir(match=r"run-(?P<n>[0-9]+)"))
-    matched = _DirMatch(tmp_path / "run-1", ParsedCaptures((), CaptureMap({"n": "1"})), (), defn)
+    matched = DirMatch(tmp_path / "run-1", ParsedCaptures((), CaptureMap({"n": "1"})), (), defn)
     assert matched.defn is defn and matched.defn.defn is defn.defn
     assert matched.kwargs["n"] == "1"
 

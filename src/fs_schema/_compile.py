@@ -9,20 +9,9 @@ from typing_extensions import TypeIs, TypeVar
 
 import fs_schema._errmsg as em
 
-from ._schema import (
-    FILES,
-    Defn,
-    Dir,
-    DirDefn,
-    File,
-    FilesKey,
-    Node,
-    Schema,
-    SchemaCls,
-    defn_node,
-    is_safe_basename,
-    normalize_name,
-)
+from ._decl import FILES, Defn, Dir, DirDefn, File, FilesKey, Node, defn_node, normalize_name
+from ._fmt import is_safe_basename
+from ._schema import Schema, SchemaCls
 
 _L = TypeVar("_L")
 

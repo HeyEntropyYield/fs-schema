@@ -10,7 +10,8 @@ from pytest_params import params
 
 from fs_schema import FILES, Dir, File, MismatchErr, Schema
 from fs_schema import _errmsg as em
-from fs_schema._schema import _BOUND_MATCH, DirDefn, FixedFile, Matches, SchemaCls, Template
+from fs_schema._decl import DirDefn
+from fs_schema._schema import BOUND_MATCH, FixedFile, Matches, SchemaCls, Template
 
 
 def _define(layout: object) -> type[Schema]:
@@ -348,7 +349,7 @@ def test_schema_policy_rejects_mixins_multiple_inheritance_and_custom_metaclass(
     with pytest.raises(TypeError, match=re.escape(em.Schema.metaclass("BadMeta"))):
         CustomMeta("BadMeta", (Schema,), {})
 
-    odd = SchemaCls("Odd", (object,), {_BOUND_MATCH: True})
+    odd = SchemaCls("Odd", (object,), {BOUND_MATCH: True})
     with pytest.raises(AttributeError):
         _ = odd.missing
 

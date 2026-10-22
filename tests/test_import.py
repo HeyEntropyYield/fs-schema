@@ -55,8 +55,8 @@ def test_public_exports_are_explicit_end_user_api() -> None:
 
 def test_private_runtime_names_are_not_reexported() -> None:
     private_names = (
-        "_DirMatch",
-        "_FileMatch",
+        "DirMatch",
+        "FileMatch",
         "_Fixed",
         "FixedDir",
         "FixedFile",

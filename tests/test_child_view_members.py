@@ -3,10 +3,10 @@ import ast
 import inspect
 from pathlib import Path
 
-from fs_schema._schema import FixedDir, FixedFile, Matches, Template, _DirMatch, _FileMatch
+from fs_schema._schema import DirMatch, FileMatch, FixedDir, FixedFile, Matches, Template
 
 # Includes Sequence mixin names (index, count, __contains__, __reversed__).
-_RUNTIME = (FixedFile, FixedDir, Matches, Template, _FileMatch, _DirMatch)
+_RUNTIME = (FixedFile, FixedDir, Matches, Template, FileMatch, DirMatch)
 _DUNDERS = frozenset({
     "__bool__",
     "__contains__",

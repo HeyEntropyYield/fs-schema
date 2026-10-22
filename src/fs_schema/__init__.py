@@ -22,15 +22,14 @@ from ._ops import (
     raise_exn as raise_exn,
     raise_mismatch as raise_mismatch,
 )
-from ._schema import (
+from ._decl import (
     FILES as FILES,
     Dir as Dir,
     File as File,
     Layout as Layout,
     Match as Match,
-    Schema as Schema,
-    SchemaRoot as SchemaRoot,
 )
+from ._schema import Schema as Schema, SchemaRoot as SchemaRoot
 from ._types import Loadable as Loadable, Located as Located
 
 from . import _create  # noqa: F401  # pyright: ignore[reportUnusedImport]

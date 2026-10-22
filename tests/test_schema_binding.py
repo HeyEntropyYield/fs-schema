@@ -6,25 +6,26 @@ from pathlib import Path
 
 import pytest
 
-from fs_schema import FILES, Match, MismatchErr, _schema, is_mismatch
+import fs_schema._bind as bind_mod
+from fs_schema import FILES, Match, MismatchErr, is_mismatch
 from fs_schema import _errmsg as em
+from fs_schema._bind import bind_children
+from fs_schema._decl import Defn, Dir, DirDefn, File
 from fs_schema._fmt import dt
 from fs_schema._schema import (
-    Dir,
-    DirDefn,
-    File,
+    BoundChild,
+    FileMatch,
     FixedDir,
     FixedFile,
     Matches,
     Schema,
     Template,
-    _FileMatch,
 )
 
 
-def _bind(root: Path, defns: Sequence[_schema.Defn], *, fast: bool = False) -> FixedDir | MismatchErr:
+def _bind(root: Path, defns: Sequence[Defn], *, fast: bool = False) -> FixedDir | MismatchErr:
     dir_defn = DirDefn(Dir(name="."), defns)  # raises
-    if is_mismatch(children := _schema._bind_children(root, dir_defn, {}, fast=fast)):
+    if is_mismatch(children := bind_children(root, dir_defn, {}, fast=fast)):
         return children
     return FixedDir(root, children, dir_defn)
 
@@ -204,20 +205,18 @@ def test_fast_bind_does_not_visit_later_siblings(tmp_path: Path, monkeypatch: py
 
     root = tmp_path / "root"
     root.mkdir()
-    seen: list[int] = []
-    original = _schema._bind_dir_defn
+    seen: list[Path] = []
+    original = Path.is_file
 
-    def track(
-        path: Path, position: int, defn: _schema.Defn, cache: _schema.FsCache, *, fast: bool = False
-    ) -> _schema.BoundChild | MismatchErr:
-        seen.append(position)
-        return original(path, position, defn, cache, fast=fast)
+    def track(path: Path) -> bool:
+        seen.append(path)
+        return original(path)
 
-    monkeypatch.setattr(_schema, "_bind_dir_defn", track)
+    monkeypatch.setattr(Path, "is_file", track)
     mismatch = Pair.bind(root, fast=True)
     assert isinstance(mismatch, MismatchErr)
     assert str(mismatch) == em.Bind.file(root / "a.txt")
-    assert seen == [0]
+    assert root / "b.txt" not in seen
     assert str(Pair.relative_to(root).bind(fast=True)) == str(mismatch)
 
 
@@ -251,15 +250,13 @@ def test_fast_bind_does_not_open_a_later_collection_member(tmp_path: Path, monke
     _touch(root / "run-1", "other")
     _touch(root / "run-2", "other")
     seen: list[Path] = []
-    original = _schema._bind_children
+    original = Path.is_dir
 
-    def track(
-        path: Path, defn: DirDefn, cache: _schema.FsCache, *, fast: bool = False
-    ) -> tuple[_schema.BoundChild, ...] | MismatchErr:
+    def track(path: Path) -> bool:
         seen.append(path)
-        return original(path, defn, cache, fast=fast)
+        return original(path)
 
-    monkeypatch.setattr(_schema, "_bind_children", track)
+    monkeypatch.setattr(Path, "is_dir", track)
     mismatch = Runs.bind(root, fast=True)
     assert isinstance(mismatch, MismatchErr)
     assert str(mismatch) == em.Bind.file(root / "run-1" / "body.txt")
@@ -326,9 +323,9 @@ def test_bind_reports_count_and_member_failures_in_one_directory(tmp_path: Path)
 
 
 def test_aggregate_of_aggregates_matches_a_flat_list(tmp_path: Path) -> None:
-    leaves = [_schema._mismatch(f"line {index}") for index in range(4)]
-    nested = _schema._aggregate([_schema._aggregate(leaves[:2]), _schema._aggregate(leaves[2:])])
-    flat = _schema._aggregate(leaves)
+    leaves = [bind_mod._mismatch(f"line {index}") for index in range(4)]
+    nested = bind_mod._aggregate([bind_mod._aggregate(leaves[:2]), bind_mod._aggregate(leaves[2:])])
+    flat = bind_mod._aggregate(leaves)
     assert str(nested) == str(flat)
     assert str(nested).splitlines() == [f"line {index}" for index in range(4)]
 
@@ -348,10 +345,10 @@ def test_aggregate_of_aggregates_matches_a_flat_list(tmp_path: Path) -> None:
         em.Bind.file(root / "right" / "a"),
         em.Bind.file(root / "right" / "b"),
     ]
-    built = _schema._aggregate([
-        _schema._mismatch(lines[0]),
-        _schema._aggregate([_schema._mismatch(line) for line in lines[1:3]]),
-        _schema._aggregate([_schema._mismatch(line) for line in lines[3:]]),
+    built = bind_mod._aggregate([
+        bind_mod._mismatch(lines[0]),
+        bind_mod._aggregate([bind_mod._mismatch(line) for line in lines[1:3]]),
+        bind_mod._aggregate([bind_mod._mismatch(line) for line in lines[3:]]),
     ])
     assert isinstance(mismatch, MismatchErr)
     assert str(mismatch) == str(built)
@@ -379,7 +376,7 @@ def test_bind_message_stays_one_line_for_odd_filenames(tmp_path: Path) -> None:
     _touch(tmp_path, odd)
     mismatch = _bind(tmp_path, (File(fmt="{n}", match=r"1", min=0),))
     assert isinstance(mismatch, MismatchErr)
-    assert str(mismatch).splitlines() == [str(_schema._mismatch(em.Bind.failed("1", odd)))]
+    assert str(mismatch).splitlines() == [str(bind_mod._mismatch(em.Bind.failed("1", odd)))]
 
 
 def test_callable_loading_preserves_generic_runtime_declaration(tmp_path: Path) -> None:
@@ -399,7 +396,7 @@ def test_callable_loading_preserves_generic_runtime_declaration(tmp_path: Path) 
     assert isinstance(loader_clash, TypeError) and str(loader_clash) == em.Load.loader(fixed.path, decode)
     assert isinstance(matches, Template)
     first_match = matches[0]
-    assert isinstance(first_match, _FileMatch) and first_match.defn is match_defn and first_match.load() == 2
+    assert isinstance(first_match, FileMatch) and first_match.defn is match_defn and first_match.load() == 2
 
     model = _bind(root, (File(name="fixed.num", schema=int),))
     assert isinstance(model, FixedDir)
@@ -542,16 +539,16 @@ def test_dir_schema_has_no_runtime_merge_or_second_binding(tmp_path: Path, monke
 
     nested = tmp_path / "root" / "nested"
     _touch(nested, "part-1", "extra-1")
-    original = _schema._bind_children
+    original = bind_mod.bind_children
     visited: list[Path] = []
 
     def counted(
-        path: Path, defn: DirDefn, cache: _schema.FsCache, *, fast: bool = False
-    ) -> tuple[_schema.BoundChild, ...] | MismatchErr:
+        path: Path, defn: DirDefn, cache: bind_mod._FsCache, *, fast: bool = False
+    ) -> tuple[BoundChild, ...] | MismatchErr:
         visited.append(path)
         return original(path, defn, cache, fast=fast)
 
-    monkeypatch.setattr(_schema, "_bind_children", counted)
+    monkeypatch.setattr(bind_mod, "bind_children", counted)
     bound = Root.bind(tmp_path / "root")
     assert isinstance(bound, Root)
     assert type(bound.nested) is Exposed
