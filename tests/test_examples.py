@@ -10,6 +10,7 @@ import fs_schema as fss
 import quickstart
 import smoke
 import symlink_copy
+import xor_directory
 
 
 def test_examples_import(tmp_path: Path) -> None:
@@ -19,6 +20,7 @@ def test_examples_import(tmp_path: Path) -> None:
     assert data_delivery_after.DownloadedDelivery
     smoke.main()
     symlink_copy.main()
+    xor_directory.main()
 
 
 def _stage_download(target: Path, *, parts: int, expected: int) -> None:

@@ -10,7 +10,7 @@ import fs_schema._bind as bind_mod
 from fs_schema import FILES, Match, MismatchErr, is_mismatch
 from fs_schema import _errmsg as em
 from fs_schema._bind import bind_children
-from fs_schema._decl import Defn, Dir, DirDefn, File
+from fs_schema._decl import Defn, Dir, DirDefn, DirLayout, File, OneDefn
 from fs_schema._fmt import dt
 from fs_schema._schema import (
     BoundChild,
@@ -24,10 +24,10 @@ from fs_schema._schema import (
 
 
 def _bind(root: Path, defns: Sequence[Defn], *, fast: bool = False) -> FixedDir | MismatchErr:
-    dir_defn = DirDefn(Dir(name="."), defns)  # raises
-    if is_mismatch(children := bind_children(root, dir_defn, {}, fast=fast)):
+    layout = DirLayout(defns)  # raises
+    if is_mismatch(children := bind_children(root, layout, {}, fast=fast)):
         return children
-    return FixedDir(root, children, dir_defn)
+    return FixedDir(root, children, OneDefn(Dir(name="."), layout))
 
 
 def _touch(parent: Path, *names: str) -> None:
@@ -41,8 +41,9 @@ def test_file_is_a_defn_and_directory_copies_children() -> None:
     source = [child]
     defn = DirDefn(Dir(name="directory"), source)
     source.clear()
-    assert defn.defns == (child,)
-    assert defn.child_type is None
+    (layout,) = defn.layouts
+    assert layout.defns == (child,)
+    assert layout.child_type is None
     assert isinstance(child, File) and not hasattr(child, "children")
 
 
@@ -543,10 +544,10 @@ def test_dir_schema_has_no_runtime_merge_or_second_binding(tmp_path: Path, monke
     visited: list[Path] = []
 
     def counted(
-        path: Path, defn: DirDefn, cache: bind_mod._FsCache, *, fast: bool = False
+        path: Path, layout: DirLayout, cache: bind_mod._FsCache, *, fast: bool = False
     ) -> tuple[BoundChild, ...] | MismatchErr:
         visited.append(path)
-        return original(path, defn, cache, fast=fast)
+        return original(path, layout, cache, fast=fast)
 
     monkeypatch.setattr(bind_mod, "bind_children", counted)
     bound = Root.bind(tmp_path / "root")

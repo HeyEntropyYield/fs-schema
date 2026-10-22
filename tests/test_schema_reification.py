@@ -39,9 +39,10 @@ def test_reifies_each_raw_grammar_branch_and_stable_class_navigation() -> None:
     assert issubclass(LayoutSchema.runs, Template)
     runs = root.defns[3]
     assert isinstance(runs, DirDefn)
-    assert runs.child_type is not None
-    assert runs.child_type.deep is runs.child_type.deep
-    assert issubclass(runs.child_type.deep.leaf, FixedFile)
+    (layout,) = runs.layouts
+    assert layout.child_type is not None
+    assert layout.child_type.deep is layout.child_type.deep
+    assert issubclass(layout.child_type.deep.leaf, FixedFile)
     assert issubclass(LayoutSchema.named, FixedFile)
     assert not hasattr(LayoutSchema, "unknown")
     assert not hasattr(LayoutSchema, "loose.txt")
@@ -462,14 +463,9 @@ def test_subclass_overrides_one_nested_file_and_keeps_siblings() -> None:
 
     bucket = Child._schema_defn.defns[0]
     assert isinstance(bucket, DirDefn)
+    (layout,) = bucket.layouts
     by_name = {}
-    for defn in bucket.defns:
+    for defn in layout.defns:
         assert isinstance(defn, File)
         by_name[defn.name] = defn.min
     assert by_name == {"keep.txt": 1, "flip.txt": 1}
-
-
-def test_unwired_catalog_sentences() -> None:
-    assert em.Schema.Body.schema_or_dict("k", 1) == "key 'k' member 1 must be a Schema or dict"
-    assert em.Xor.empty(".") == "xor has no layouts: ."
-    assert em.Xor.single(".") == "xor has no single layout: ."

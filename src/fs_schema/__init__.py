@@ -29,7 +29,7 @@ from ._decl import (
     Layout as Layout,
     Match as Match,
 )
-from ._schema import Schema as Schema, SchemaRoot as SchemaRoot
+from ._schema import Schema as Schema, SchemaRoot as SchemaRoot, xor as xor
 from ._types import Loadable as Loadable, Located as Located
 
 from . import _create  # noqa: F401  # pyright: ignore[reportUnusedImport]

@@ -173,6 +173,10 @@ class Xor:
     def single(path: object) -> str:
         return _at(_has_no("xor", "single layout"), path)
 
+    @staticmethod
+    def clash(name: str) -> str:
+        return _fix(f"xor branches disagree on {name!r}", "use an index or a branch name")
+
 
 class Fmt:
     """Basename format and match."""

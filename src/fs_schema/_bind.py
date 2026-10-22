@@ -10,7 +10,7 @@ from typing_extensions import TypeIs, TypeVar
 
 import fs_schema._errmsg as em
 
-from ._decl import Defn, DirDefn, File, Match, Node, defn_node
+from ._decl import Defn, DirDefn, DirLayout, File, Match, Node, OneDefn, defn_node
 from ._fmt import child_path_exn, safe, safe_path_exn
 from ._ops import MismatchErr, is_mismatch
 from ._schema import (
@@ -37,8 +37,8 @@ def _is_bound_dir_match_type(value: object, schema_type: type) -> TypeIs[type[Di
     return isinstance(value, type) and issubclass(value, schema_type) and issubclass(value, DirMatch)
 
 
-def _bound_dir_match_type(defn: DirDefn) -> type[DirMatch]:
-    schema_type = defn.child_type
+def _bound_dir_match_type(layout: DirLayout) -> type[DirMatch]:
+    schema_type = layout.child_type
     if schema_type is None:
         return DirMatch
 
@@ -114,7 +114,7 @@ def _aggregate(failures: Sequence[MismatchErr]) -> MismatchErr:
 
 
 def bind_children(
-    path: Path, dir_defn: DirDefn, cache: _FsCache, *, fast: bool = False
+    path: Path, layout: DirLayout, cache: _FsCache, *, fast: bool = False
 ) -> tuple[BoundChild, ...] | MismatchErr:
     path = safe_path_exn(path)  # caller error
     if not path.is_dir():
@@ -122,7 +122,7 @@ def bind_children(
 
     children: list[BoundChild] = []
     failures: list[MismatchErr] = []
-    for position, defn in enumerate(dir_defn.defns):
+    for position, defn in enumerate(layout.defns):
         if is_mismatch(child := _bind_dir_defn(path, position, defn, cache, fast=fast)):
             if fast:
                 return child
@@ -171,10 +171,12 @@ def _bind_dir_defn(
             )))  # fmt: skip
     if failures:
         return _aggregate(failures)
-    return Template(path, matches, defn) if node.fmt else Matches(path, matches, defn)
+    if node.fmt:
+        return Template(path, matches, defn)
+    return Matches(path, matches, defn)
 
 
-# plum cannot carry SafePath. child_path_exn or _listed already proved this path
+# plum cannot carry SafePath. child_path_exn or _listed already returned SafePath
 @overload
 def _bind_fixed(path: Path, defn: File[_L], cache: _FsCache, *, fast: bool = False) -> FixedFile[_L]: ...
 
@@ -195,12 +197,26 @@ def _bind_fixed_kind(path: Path, defn: File, cache: _FsCache, fast: bool = False
     return FixedFile(path, defn)
 
 
+def _first_layout(
+    path: SafePath, layouts: Sequence[DirLayout], cache: _FsCache, *, fast: bool
+) -> tuple[DirLayout, tuple[BoundChild, ...]] | MismatchErr:
+    # fast fails one layout fast. The next layout is still tried. skip_mismatch is the caller's job
+    failures: list[MismatchErr] = []
+    for layout in layouts:
+        if is_mismatch(children := bind_children(path, layout, cache, fast=fast)):
+            failures.append(children)
+            continue
+        return layout, children
+    return _aggregate(failures) if failures else _mismatch(em.Xor.empty(path))
+
+
 @dispatch
 def _bind_fixed_kind(path: Path, defn: DirDefn, cache: _FsCache, fast: bool = False) -> FixedDir | MismatchErr:
     path = SafePath(path)  # plum boundary
-    if is_mismatch(children := bind_children(path, defn, cache, fast=fast)):
-        return children
-    return (defn.child_type or FixedDir)(path, children, defn)
+    if is_mismatch(chosen := _first_layout(path, defn.layouts, cache, fast=fast)):
+        return chosen
+    layout, children = chosen
+    return (layout.child_type or FixedDir)(path, children, OneDefn(defn.defn, layout))
 
 
 def _bind_sort_matches(matches: list[_MatchValue], node: Node) -> list[_MatchValue]:
@@ -250,7 +266,6 @@ def _bind_dir_matches(
 ) -> _MatchRes[DirMatch]:
     matches: list[DirMatch] = []
     failures: list[MismatchErr] = []
-    match_type = _bound_dir_match_type(defn)
     node = defn.defn
     for target in listing:
         if not _bind_is_kind(target, defn):
@@ -267,15 +282,17 @@ def _bind_dir_matches(
             continue
         if (captures := node.select(name)) is None:
             continue
-        if is_mismatch(children := bind_children(target, defn, cache, fast=fast)):
+        if is_mismatch(chosen := _first_layout(target, defn.layouts, cache, fast=fast)):
             if node.skip_mismatch:
                 continue
             if fast:
-                return matches, [children]
-            failures.append(children)
+                return matches, [chosen]
+            failures.append(chosen)
             continue
-        matches.append(match_type(target, captures, children, defn))
-    return _bind_sort_matches(matches, defn.defn), failures
+        layout, children = chosen
+        bound = OneDefn(node, layout)
+        matches.append(_bound_dir_match_type(layout)(target, captures, children, bound))
+    return _bind_sort_matches(matches, node), failures
 
 
 @overload

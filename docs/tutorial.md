@@ -339,6 +339,44 @@ def latest_part(downloaded: DownloadedDelivery) -> Path | None:
 
 More on the [glom](integrations.md) page.
 
+## One directory, one of several schemas
+
+`xor` is an exclusive union. One branch binds, first success. An unnamed branch promotes its children onto the xor. A keyword keeps them behind that name.
+
+```python
+class Letter(fss.Schema):
+    schema = {"body": "body.txt", "stamp": "stamp.json"}
+
+
+class Table(fss.Schema):
+    schema = {"rows": "rows.json", "stamp": "stamp.json"}
+
+
+class Open(fss.Schema):
+    schema = {"slot": fss.xor(Letter, Table)}
+
+
+class Box(fss.Schema):
+    schema = {"slot": fss.xor(letter=Letter, table=Table)}
+
+
+def publish_note(root: Path) -> str:
+    planned = Open.relative_to(root)
+    planned.slot.body.create("hello\n")
+    planned.slot.stamp.create("{}\n")
+    bound = fss.raise_mismatch(planned.bind())
+    return bound.slot.body.read_text()
+
+
+def publish_letter(root: Path) -> str:
+    planned = Box.relative_to(root)
+    planned.slot.letter.create(body="hello\n", stamp="{}\n")
+    bound = fss.raise_mismatch(planned.bind())
+    return bound.slot.body.read_text()
+```
+
+`publish_note` writes `body` and `stamp` on the xor, because those branches have no names. `publish_letter` writes through `.letter`. Bind returns a `Letter` here. `bound.slot.body` is that letter. `.letter` is not on the bound value.
+
 ## What these calls do not promise
 
 `relative_to` and `format` only plan paths. `create` and `put` write. `put` replaces one file atomically and creates missing parents. `create` can leave a partial tree if a later write fails. `bind` checks names and shape. `load` checks file contents.

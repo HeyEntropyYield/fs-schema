@@ -10,6 +10,7 @@ from beartype.roar import BeartypeCallHintParamViolation
 
 from fs_schema import FILES, Dir, File, Layout, Match, MismatchErr, Schema, SchemaRoot
 from fs_schema import _errmsg as em
+from fs_schema._decl import DirDefn
 from fs_schema._schema import FixedDir, FixedFile, Matches, Template
 
 
@@ -99,10 +100,13 @@ def test_planned_tree_is_canonical_path_bearing_and_only_root_can_bind(
     child = fixed.child
     deep = child.deep
 
-    assert plan.path == root and plan.defn is _PlannedRoot._schema_defn
+    child_decl = _PlannedRoot._schema_defn.defns[4]
+    assert isinstance(child_decl, DirDefn)
+    assert plan.path == root and plan.defn.layout is _PlannedRoot._schema_defn
     assert plan[4] is fixed and plan["fixed dir"] is fixed
     assert fixed.path == root / "fixed dir"
-    assert fixed.defn is _PlannedRoot._schema_defn.defns[4]
+    (layout,) = child_decl.layouts
+    assert fixed.defn.defn is child_decl.defn and fixed.defn.layout is layout
     assert fixed[0] is child and fixed["child"] is child
     assert child[0] is deep and child["deep"] is deep
     assert all(isinstance(node.path, Path) for node in (plan, *plan, fixed, child, deep, deep.batches))

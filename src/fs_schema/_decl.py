@@ -253,7 +253,7 @@ FILES: Final = FilesKey()
 # the unions. `LayoutEntry` is the truth, and is what the reifier matches on,
 # which is where the remaining pairings are enforced. Recursive, so this whole
 # family is static-only -- fine, since only ClassVar[Layout] ever uses it.
-DirRhs: TypeAlias = "Layout | type[Schema]"
+DirRhs: TypeAlias = "Layout | type[Schema] | Xor | Sequence[Layout | type[Schema]]"
 FileRhs: TypeAlias = str | File[object]
 FilesRhs: TypeAlias = list[FileRhs]
 
@@ -264,29 +264,76 @@ Layout: TypeAlias = dict[LayoutKey, LayoutValue]
 LayoutEntry: TypeAlias = "tuple[Dir[Schema] | str, DirRhs] | tuple[FilesKey, FilesRhs] | tuple[str, FileRhs]"
 
 
+@final
+class Xor:
+    """Exclusive layouts. Not a directory node"""
+
+    __slots__ = ("entries",)
+    entries: tuple[tuple[str | None, object], ...]
+
+    def __init__(self, entries: tuple[tuple[str | None, object], ...]) -> None:
+        self.entries = entries
+
+
 ## Reified definitions
 
 
 @dataclass(frozen=True, slots=True, init=False)
-class DirDefn:
-    defn: Dir["Schema"]
+class DirLayout:
+    """Children of one directory layout. Not a directory node"""
+
     defns: tuple["Defn", ...]
     lookup: Mapping[str, int]
     child_type: "type[Schema] | None"
+    name: str | None
 
     def __init__(
         self,
-        defn: Dir["Schema"],
-        defns: "Sequence[File[object] | DirDefn]" = (),
+        defns: "Sequence[Defn]" = (),
         child_type: "type[Schema] | None" = None,
+        name: str | None = None,
     ) -> None:
         """Exception: a layout clash is a declaration error"""
         child_defns = tuple(defns)
         lookup = _dir_defn_ctor_uniq_lookups_exn(child_defns)
-        object.__setattr__(self, "defn", defn)
         object.__setattr__(self, "defns", child_defns)
         object.__setattr__(self, "lookup", MappingProxyType(lookup))
         object.__setattr__(self, "child_type", child_type)
+        object.__setattr__(self, "name", name)
+
+
+@dataclass(frozen=True, slots=True, init=False)
+class DirDefn:
+    """Directory node. `layouts` includes a plain RHS of length 1"""
+
+    defn: Dir["Schema"]
+    layouts: tuple[DirLayout, ...]
+
+    def __init__(
+        self,
+        defn: Dir["Schema"],
+        defns: "Sequence[Defn]" = (),
+        child_type: "type[Schema] | None" = None,
+        *,
+        name: str | None = None,
+        layouts: Sequence[DirLayout] | None = None,
+    ) -> None:
+        if layouts is not None:
+            if defns or child_type is not None or name is not None:
+                raise AssertionError("layouts replaces defns")
+            chosen = tuple(layouts)
+        else:
+            chosen = (DirLayout(defns, child_type, name),)
+        object.__setattr__(self, "defn", defn)
+        object.__setattr__(self, "layouts", chosen)
+
+
+@dataclass(frozen=True, slots=True)
+class OneDefn:
+    """One layout on a directory. Not a `DirDefn`: no `layouts` tuple"""
+
+    defn: Dir["Schema"]
+    layout: DirLayout
 
 
 def _dir_defn_ctor_uniq_lookups_exn(child_defns: tuple["Defn", ...]) -> dict[str, int]:
@@ -331,6 +378,39 @@ def normalize_name(name: Safe[Name]) -> Safe[Name]:
 
 def defn_node(defn: Defn) -> Node:
     return defn if isinstance(defn, File) else defn.defn
+
+
+def is_union(layouts: Sequence[DirLayout]) -> bool:
+    # One unnamed layout is that schema. A name, or more than one layout, stays a union
+    return len(layouts) != 1 or layouts[0].name is not None
+
+
+def child_attr(defn: Defn) -> str | None:
+    node = defn_node(defn)
+    if node.alias:
+        return node.alias
+    if node.name:
+        return normalize_name(node.name)
+    return None
+
+
+def unnamed_clashes(layouts: Sequence[DirLayout]) -> frozenset[str]:
+    groups: dict[str, list[Defn]] = {}
+    for layout in layouts:
+        if layout.name is not None:
+            continue
+        seen: set[str] = set()
+        for child in layout.defns:
+            attr = child_attr(child)
+            if attr is None or attr in seen:
+                continue
+            seen.add(attr)
+            groups.setdefault(attr, []).append(child)
+    return frozenset(
+        key
+        for key, children in groups.items()
+        if len(children) > 1 and any(child != children[0] for child in children[1:])
+    )
 
 
 def capture_names(defn: Defn) -> frozenset[str]:

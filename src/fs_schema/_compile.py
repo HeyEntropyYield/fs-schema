@@ -1,6 +1,7 @@
 # pyright: reportImportCycles=false
 import keyword
 import typing
+import warnings
 from collections.abc import Sequence
 from typing import Final
 
@@ -9,7 +10,20 @@ from typing_extensions import TypeIs, TypeVar
 
 import fs_schema._errmsg as em
 
-from ._decl import FILES, Defn, Dir, DirDefn, File, FilesKey, Node, defn_node, normalize_name
+from ._decl import (
+    FILES,
+    Defn,
+    Dir,
+    DirDefn,
+    DirLayout,
+    File,
+    FilesKey,
+    Node,
+    Xor,
+    defn_node,
+    normalize_name,
+    unnamed_clashes,
+)
 from ._schema import Schema, SchemaCls
 
 _L = TypeVar("_L")
@@ -19,9 +33,9 @@ def is_schema_type(value: object) -> TypeIs[type[Schema]]:
     return isinstance(value, SchemaCls) and issubclass(value, Schema)
 
 
-def schema_defn_for(schema_type: type[Schema]) -> DirDefn:
+def schema_defn_for(schema_type: type[Schema]) -> DirLayout:
     value = vars(schema_type).get("_schema_defn")
-    if not isinstance(value, DirDefn):
+    if not isinstance(value, DirLayout):
         raise AssertionError(f"{schema_type.__name__} has no compiled schema definition")
     return value
 
@@ -71,9 +85,16 @@ def _merge_defns_exn(base: Sequence[Defn], local: Sequence[Defn]) -> tuple[Defn,
 
 
 def _merge_one_exn(base: Defn, local: Defn) -> Defn:
-    # DirDefn raises
-    if isinstance(base, DirDefn) and isinstance(local, DirDefn):
-        return DirDefn(local.defn, _merge_defns_exn(base.defns, local.defns), local.child_type or base.child_type)
+    if isinstance(base, DirDefn) and isinstance(local, DirDefn) and len(base.layouts) == len(local.layouts):
+        layouts = tuple(
+            DirLayout(
+                _merge_defns_exn(base_body.defns, local_body.defns),
+                local_body.child_type or base_body.child_type,
+                local_body.name,
+            )
+            for base_body, local_body in zip(base.layouts, local.layouts, strict=True)
+        )
+        return DirDefn(local.defn, layouts=layouts)
     return local
 
 
@@ -103,16 +124,19 @@ def _children_satisfy(actual: Sequence[Defn], required: Sequence[Defn]) -> bool:
 def _defn_satisfies(actual: Defn, required: Defn) -> bool:
     if isinstance(required, File):
         return isinstance(actual, File) and actual == required
-    return (
-        isinstance(actual, DirDefn) and actual.defn == required.defn and _children_satisfy(actual.defns, required.defns)
+    if not isinstance(actual, DirDefn) or actual.defn != required.defn or len(actual.layouts) != len(required.layouts):
+        return False
+    return all(
+        _children_satisfy(got.defns, need.defns) for got, need in zip(actual.layouts, required.layouts, strict=True)
     )
 
 
 def _compile_inline_schema_exn(
-    class_name: str, module: str, position: int, layout: dict[object, object]
+    class_name: str, module: str, position: int, layout: dict[object, object], *, part: int | None = None
 ) -> type[Schema]:
+    label = f"{position}" if part is None else f"{position}_{part}"
     generated = type(
-        f"_{class_name}Child{position}",
+        f"_{class_name}Child{label}",
         (Schema,),
         {"__module__": module, "schema": layout},
     )
@@ -121,18 +145,49 @@ def _compile_inline_schema_exn(
     return generated
 
 
-def _compile_directory_defn_exn(class_name: str, key: object, node: Dir[Schema], child_type: type[Schema]) -> DirDefn:
+def _layout_from_schema_exn(
+    class_name: str,
+    key: object,
+    node: Dir[Schema],
+    child_type: type[Schema],
+    *,
+    name: str | None = None,
+) -> DirLayout:
     child_root = schema_defn_for(child_type)
-    compiled = DirDefn(node, child_root.defns, child_type)
+    layout = DirLayout(child_root.defns, child_type, name)
     if node.schema is not None:
         contract = schema_defn_for(node.schema)
-        if not _children_satisfy(compiled.defns, contract.defns):
+        if not _children_satisfy(layout.defns, contract.defns):
             raise _invalid_schema(class_name, f"declaration {key!r} RHS does not satisfy Dir.schema")
-    return compiled
+    return layout
 
 
-def _is_schema_dir(value: object) -> TypeIs[Dir[Schema]]:
-    return isinstance(value, Dir)
+def _dir_defn_exn(
+    class_name: str,
+    module: str,
+    key: object,
+    node: Dir[Schema],
+    entries: Sequence[tuple[str | None, object]],
+    *,
+    origin: int,
+    warn: bool,
+) -> DirDefn:
+    # A sequence is entries of (None, item). xor.entries already carries the branch name
+    layouts: list[DirLayout] = []
+    for index, (name, item) in enumerate(entries):
+        if _is_raw_mapping(item):
+            item = _compile_inline_schema_exn(class_name, module, origin, item, part=index)
+        if not is_schema_type(item):
+            raise _invalid_schema(class_name, em.Schema.Body.schema_or_dict(key, item))
+        layouts.append(_layout_from_schema_exn(class_name, key, node, item, name=name))
+    if warn:
+        for clash in sorted(unnamed_clashes(layouts)):
+            warnings.warn(em.Xor.clash(clash), UserWarning, stacklevel=2)
+    return DirDefn(node, layouts=tuple(layouts))
+
+
+def _is_layout_seq(value: object) -> TypeIs[Sequence[object]]:
+    return isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray, memoryview))
 
 
 def _is_raw_mapping(value: object) -> TypeIs[dict[object, object]]:
@@ -154,46 +209,87 @@ def _compile_local_defns_exn(cls: type[Schema]) -> tuple[Defn, ...]:
         raise _invalid_schema(cls.__name__, em.Schema.Body.MUST_DICT)
     entries = raw
     defns: list[Defn] = []
+
+    def add_file_exn(node: File, key: object):
+        _compile_local_node_exn(cls.__name__, key, node)
+        defns.append(node)
+
     for key, value in entries.items():
         match key, value:
-            case FilesKey() as token, _ if token is FILES and _is_raw_list(value):
-                for item in value:
-                    if isinstance(item, str):
-                        file = File(name=item)
-                    elif isinstance(item, File):
-                        file = item
-                    else:
-                        raise _invalid_schema(cls.__name__, f"key {key!r} member {item!r} must be a str or File")
-                    _compile_local_node_exn(cls.__name__, key, file)
-                    defns.append(file)
-            case str() as name, _ if _is_raw_mapping(value):
+            # Normal RHS dicts/dirs
+            case str() as name, layout if _is_raw_mapping(layout):
                 node: Dir[Schema] = Dir(name=name)
                 _compile_local_node_exn(cls.__name__, key, node)
-                child_type = _compile_inline_schema_exn(cls.__name__, cls.__module__, len(defns), value)
-                defns.append(_compile_directory_defn_exn(cls.__name__, key, node, child_type))
-            case lhs, _ if _is_schema_dir(lhs) and _is_raw_mapping(value):
-                node = lhs
+                child_type = _compile_inline_schema_exn(cls.__name__, cls.__module__,
+                    len(defns), layout)  # fmt: skip
+                defns.append(_dir_defn_exn(cls.__name__, cls.__module__, key, node,
+                    ((None, child_type),), origin=len(defns), warn=False))  # fmt: skip
+
+            case Dir() as node, layout if _is_raw_mapping(layout):
                 _compile_local_node_exn(cls.__name__, key, node)
-                child_type = _compile_inline_schema_exn(cls.__name__, cls.__module__, len(defns), value)
-                defns.append(_compile_directory_defn_exn(cls.__name__, key, node, child_type))
+                child_type = _compile_inline_schema_exn(cls.__name__, cls.__module__,
+                    len(defns), layout)  # fmt: skip
+                defns.append(_dir_defn_exn(cls.__name__, cls.__module__, key, node,
+                    ((None, child_type),), origin=len(defns), warn=False))  # fmt: skip
+
+            # RHS Xor (Seq)
+            case Dir() as node, Xor() as rhs:
+                _compile_local_node_exn(cls.__name__, key, node)
+                defns.append(_dir_defn_exn(cls.__name__, cls.__module__, key, node,
+                    rhs.entries, origin=len(defns), warn=cls.warn))  # fmt: skip
+
+            case str() as name, Xor() as rhs:
+                node = Dir(name=name)
+                _compile_local_node_exn(cls.__name__, key, node)
+                defns.append(_dir_defn_exn(cls.__name__, cls.__module__, key, node,
+                    rhs.entries, origin=len(defns), warn=cls.warn))  # fmt: skip
+
+            case Dir() as node, rhs if _is_layout_seq(rhs):
+                _compile_local_node_exn(cls.__name__, key, node)
+                defns.append(_dir_defn_exn(cls.__name__, cls.__module__, key, node,
+                    tuple((None, item) for item in rhs), origin=len(defns), warn=False))  # fmt: skip
+
+            case str() as name, rhs if _is_layout_seq(rhs):
+                node = Dir(name=name)
+                _compile_local_node_exn(cls.__name__, key, node)
+                defns.append(_dir_defn_exn(cls.__name__, cls.__module__, key, node,
+                    tuple((None, item) for item in rhs), origin=len(defns), warn=False))  # fmt: skip
+
+            # Normal RHS Schema
             case str() as name, rhs if is_schema_type(rhs):
                 node = Dir(name=name)
                 _compile_local_node_exn(cls.__name__, key, node)
-                defns.append(_compile_directory_defn_exn(cls.__name__, key, node, rhs))
-            case lhs, rhs if _is_schema_dir(lhs) and is_schema_type(rhs):
-                node = lhs
+                defns.append(_dir_defn_exn(cls.__name__, cls.__module__, key, node,
+                    ((None, rhs),), origin=len(defns), warn=False))  # fmt: skip
+
+            case Dir() as node, rhs if is_schema_type(rhs):
                 _compile_local_node_exn(cls.__name__, key, node)
-                defns.append(_compile_directory_defn_exn(cls.__name__, key, node, rhs))
+                defns.append(_dir_defn_exn(cls.__name__, cls.__module__, key, node,
+                    ((None, rhs),), origin=len(defns), warn=False))  # fmt: skip
+
+            # Normal files
             case str() as alias, str() as name:
-                file = File(name=name, alias=alias)
-                _compile_local_node_exn(cls.__name__, key, file)
-                defns.append(file)
+                add_file_exn(File(name=name, alias=alias), key)
+
             case str() as alias, File() as source:
                 file = source if source.alias == alias else evolve(source, alias=alias)
-                _compile_local_node_exn(cls.__name__, key, file)
-                defns.append(file)
+                add_file_exn(file, key)
+
+            # FilesKey Files
+            case FilesKey() as token, _ if token is FILES and _is_raw_list(value):
+                for item in value:
+                    match item:
+                        case str():
+                            add_file_exn(File(name=item), key)
+                        case File():
+                            add_file_exn(item, key)
+                        case _:
+                            raise _invalid_schema(cls.__name__, f"key {key!r} member {item!r} must be a str or File")
+
             case FilesKey() as token, _ if token is FILES:
                 raise _invalid_schema(cls.__name__, em.Schema.Body.files(key))
+
+            # The rest is undefined
             case _:
                 raise _invalid_schema(cls.__name__, em.Schema.Body.invalid(key))
     return tuple(defns)
@@ -218,7 +314,7 @@ def schema_ctor_check_class(cls: type[Schema]) -> Exception | None:
 
     inherited_members = {
         name for ancestor in cls.__mro__[1:] for name in ancestor.__dict__ if not name.startswith("__")
-    } - {"schema"}
+    } - {"schema", "warn"}
     if unsafe := cls.__dict__.keys() & (inherited_members | _CAPTURE_MEMBERS | _UNSAFE_SCHEMA_DUNDERS):
         return TypeError(em.Schema.override(cls.__name__, sorted(unsafe)[0]))
     return None
@@ -230,9 +326,9 @@ def schema_ctor_compile_defn(cls: type[Schema]) -> Exception | None:
         raise AssertionError("validated Schema class lost its Schema base")
     try:  # DirDefn can raise ValueError
         local_defns = _compile_local_defns_exn(cls)  # Uses File/Dir (Node), which fails fast
-        _ = DirDefn(Dir(name="."), local_defns)
-        defns = _merge_defns_exn(schema_defn_for(base).defns, local_defns)  # DirDefn
-        type.__setattr__(cls, "_schema_defn", DirDefn(Dir(name="."), defns))
+        _ = DirLayout(local_defns)
+        defns = _merge_defns_exn(schema_defn_for(base).defns, local_defns)
+        type.__setattr__(cls, "_schema_defn", DirLayout(defns))
     except TypeError as error:
         return error
     except ValueError as error:

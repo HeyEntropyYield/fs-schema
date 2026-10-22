@@ -2,6 +2,17 @@
 
 API by git tag. Signatures: [reference](https://heyentropyyield.github.io/fs-schema/reference/).
 
+## Unreleased
+
+`xor(...)` is an exclusive union. One branch binds, first success.
+Unnamed branches promote their children onto the xor. A keyword keeps them behind that branch.
+Create through a child or a branch. Bind returns the winning schema.
+[xor](https://heyentropyyield.github.io/fs-schema/reference/#xor)
+[example](https://github.com/heyentropyyield/fs-schema/blob/master/examples/xor_directory.py)
+
+`warn = False` on a schema class silences warnings from that class.
+[Warnings](https://heyentropyyield.github.io/fs-schema/reference/#warnings)
+
 ## v0.7.3
 
 `len` on a fixed directory or a directory match raises `TypeError`. A collection still has a length.

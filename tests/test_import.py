@@ -25,6 +25,7 @@ from fs_schema import (
     put,
     raise_exn,
     raise_mismatch,
+    xor,
 )
 
 
@@ -48,6 +49,7 @@ def test_public_exports_are_explicit_end_user_api() -> None:
         "put": put,
         "raise_exn": raise_exn,
         "raise_mismatch": raise_mismatch,
+        "xor": xor,
     }
     assert all(value is vars(fs_schema)[name] for name, value in explicit_exports.items())
     assert "__all__" not in vars(fs_schema)

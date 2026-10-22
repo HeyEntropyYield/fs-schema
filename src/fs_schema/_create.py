@@ -11,7 +11,7 @@ import fs_schema._errmsg as em
 
 from ._decl import Defn, DirDefn, File, Match, capture_names, defn_node, validate_capture_names_exn
 from ._fmt import Captures, captures, child_path_exn, safe
-from ._plan import format_any_exn, plan_fixed
+from ._plan import format_any_exn, plan_fixed_exn
 from ._schema import FixedDir, FixedFile, Matches, SchemaCls, Template
 from ._types import CreateTop, FmtFields, Name, PathIsh, Puttable, Raw
 
@@ -42,12 +42,13 @@ def _write_plan_bound_exn(node: object) -> None:
 
 def apply_create_exn(directory: FixedDir, spec: Mapping[str, CreateTop]) -> None:
     directory.path.mkdir(parents=True, exist_ok=True)  # OSError
+    body = directory.defn.layout
     for key in spec:
-        if key not in directory.defn.lookup:
+        if key not in body.lookup:
             raise KeyError(f"unknown create key: {key!r}")
-    for index, defn in enumerate(directory.defn.defns):
+    for index, defn in enumerate(body.defns):
         key = _create_child_key_exn(defn)
-        value = _create_spec_entry_exn(directory.defn.lookup, spec, index)
+        value = _create_spec_entry_exn(body.lookup, spec, index)
         if isinstance(value, _Absent):
             if _is_required_exact_dir(defn):
                 child = directory[key]
@@ -179,7 +180,7 @@ def _write_matches_named_exn(
     for name, body in value.items():
         if not (found := safe(Raw[Name](name))) or node.select(found) is None:
             raise ValueError(em.Create.member(key, name, filenames=name in names))
-        _write_formatted_exn(defn, plan_fixed(child_path_exn(template.path, found), defn), body)  # pyright: ignore[reportArgumentType]
+        _write_formatted_exn(defn, plan_fixed_exn(child_path_exn(template.path, found), defn), body)  # pyright: ignore[reportArgumentType]
 
 
 @dispatch

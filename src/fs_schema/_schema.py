@@ -30,12 +30,18 @@ from ._decl import (
     Defn,
     Dir,
     DirDefn,
+    DirLayout,
     File,
     Layout,
     Match,
     Node,
+    OneDefn,
+    Xor,
+    child_attr,
     defn_node,
+    is_union,
     normalize_name,
+    unnamed_clashes,
     validate_capture_names_exn,
 )
 from ._fmt import (
@@ -299,16 +305,16 @@ class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
     def parse(self: "Matches[FileMatch[_L], File[_L]]", source: PathIsh) -> FixedFile[_L]: ...
 
     @overload
-    def parse(self: "Matches[DirMatch, DirDefn]", source: PathIsh) -> "FixedDir": ...
+    def parse(self: "Matches[DirMatch, DirDefn]", source: PathIsh) -> "FixedDir | XorDir": ...
 
-    def parse(self, source: PathIsh) -> "FixedFile[object] | FixedDir":
+    def parse(self, source: PathIsh) -> "FixedFile[object] | FixedDir | XorDir":
         """Exception: raises to support chaining"""
-        from ._plan import plan_fixed
+        from ._plan import plan_fixed_exn
 
         basename = Path(source).name
         if not (name := safe(Raw[Name](basename))) or defn_node(self.defn).select(name) is None:
             raise ValueError(em.Parse.member(basename))
-        return plan_fixed(child_path_exn(self.path, name), self.defn)
+        return plan_fixed_exn(child_path_exn(self.path, name), self.defn)
 
 
 def _matches_where_captures(
@@ -329,9 +335,9 @@ class Template(Matches[_M_co, _Defn_co], Generic[_M_co, _Defn_co]):
     def format(self: "Template[FileMatch[_L], File[_L]]", *args: FmtFieldT, **kwargs: FmtFieldT) -> FixedFile[_L]: ...
 
     @overload
-    def format(self: "Template[DirMatch, DirDefn]", *args: FmtFieldT, **kwargs: FmtFieldT) -> "FixedDir": ...
+    def format(self: "Template[DirMatch, DirDefn]", *args: FmtFieldT, **kwargs: FmtFieldT) -> "FixedDir | XorDir": ...
 
-    def format(self, *args: FmtFieldT, **kwargs: FmtFieldT) -> "FixedFile[object] | FixedDir":
+    def format(self, *args: FmtFieldT, **kwargs: FmtFieldT) -> "FixedFile[object] | FixedDir | XorDir":
         """Exception: raises to support chaining"""
         from ._plan import format_any_exn
 
@@ -417,7 +423,7 @@ if TYPE_CHECKING:
 
         def where(self, *args: CaptureField, **kwargs: CaptureField) -> "_ChildView": ...  # Matches, Template
 
-    Child: TypeAlias = "FixedFile[object] | FixedDir | Matches[FileMatch[object] | DirMatch]"
+    Child: TypeAlias = "FixedFile[object] | FixedDir | XorDir | Matches[FileMatch[object] | DirMatch]"
     # LUB of mixed slots. Optional exact may be None; required/collection never.
     BoundChild: TypeAlias = "Child | None"
     # Checker sees one view. Runtime stays Child | None so a missing optional is None.
@@ -426,6 +432,7 @@ else:
     Child: TypeAlias = typing.Union[  # noqa: UP007
         FixedFile[object],
         ForwardRef("fs_schema._schema.FixedDir"),
+        ForwardRef("fs_schema._schema.XorDir"),
         Matches[typing.Union[FileMatch[object], ForwardRef("fs_schema._schema.DirMatch")]],  # noqa: UP007
     ]
     BoundChild: TypeAlias = Child | None
@@ -444,18 +451,18 @@ class FixedDir(_Fixed):
     _children: tuple[BoundChild, ...]
     _lookup: Mapping[str, int]
     fmt_fields: FmtFields
-    defn: DirDefn
+    defn: OneDefn
 
     def __init__(
         self,
         path: PathIsh,
         children: Sequence[BoundChild],
-        defn: DirDefn,
+        defn: OneDefn,
         fmt_fields: FmtFields | None = None,
     ) -> None:
         _Fixed.__init__(self, path)
         self._children = tuple(children)
-        self._lookup = defn.lookup
+        self._lookup = defn.layout.lookup
         self.defn = defn
         self.fmt_fields = dict(fmt_fields or {})
 
@@ -487,8 +494,8 @@ class FixedDir(_Fixed):
         except KeyError:
             raise AttributeError(name) from None
         child = self._children[index]
-        defn = self.defn.defns[index] if child is None else child.defn
-        node = defn_node(defn)
+        held = self.defn.layout.defns[index] if child is None else child.defn
+        node = held.defn if isinstance(held, OneDefn) else defn_node(held)
         if name != node.alias and name != normalize_name(node.name):
             raise AttributeError(name)
         return typing.cast(GetChild, typing.cast(object, child))
@@ -509,8 +516,65 @@ class FixedDir(_Fixed):
         return self
 
 
+class XorDir(_Fixed):
+    """Plan of a union. Bind replaces this with the winning layout"""
+
+    defn: DirDefn
+    _arms: tuple[FixedDir, ...]
+    _clashes: frozenset[str]
+
+    def __init__(self, path: PathIsh, defn: DirDefn) -> None:
+        from ._plan import plan_layout_children_exn
+
+        _Fixed.__init__(self, path)
+        self.defn = defn
+        self._clashes = unnamed_clashes(defn.layouts)
+        self._arms = tuple(FixedDir(
+            self.path,
+            plan_layout_children_exn(self.path, layout),  # caller error
+            OneDefn(defn.defn, layout),
+        ) for layout in defn.layouts)  # fmt: skip
+
+    @overload
+    def __getitem__(self, index: int) -> FixedDir: ...
+
+    @overload
+    def __getitem__(self, index: str) -> FixedDir: ...
+
+    def __getitem__(self, index: int | str) -> FixedDir:
+        if isinstance(index, str):
+            for layout, arm in zip(self.defn.layouts, self._arms, strict=True):
+                if layout.name == index:
+                    return arm
+            raise KeyError(index)
+        unnamed = tuple(arm for layout, arm in zip(self.defn.layouts, self._arms, strict=True) if layout.name is None)
+        return unnamed[index]
+
+    def __getattr__(self, name: str) -> Child:
+        for layout, arm in zip(self.defn.layouts, self._arms, strict=True):
+            if layout.name == name:
+                return arm
+        if name in self._clashes:
+            raise AttributeError(em.Xor.clash(name))
+        # Unnamed branches only. Their children are promoted. Named children stay on the branch
+        found: list[Child] = []
+        for layout, arm in zip(self.defn.layouts, self._arms, strict=True):
+            if layout.name is not None:
+                continue
+            for child in layout.defns:
+                if child_attr(child) != name:
+                    continue
+                found.append(typing.cast(Child, getattr(arm, name)))
+        if not found:
+            raise AttributeError(name)
+        return found[0]
+
+    def create(self, spec: Mapping[str, CreateTop] | None = None, /, **children: CreateTop) -> Never:
+        raise TypeError(em.Xor.single(self.path))
+
+
 class DirMatch(_CaptureState, FixedDir):
-    def __init__(self, path: PathIsh, captures: ParsedCaptures, children: Sequence[BoundChild], defn: DirDefn) -> None:
+    def __init__(self, path: PathIsh, captures: ParsedCaptures, children: Sequence[BoundChild], defn: OneDefn) -> None:
         FixedDir.__init__(self, path, children, defn)
         self._captures: ParsedCaptures = captures
 
@@ -609,9 +673,14 @@ def _root_type_for(schema_type: type[_S]) -> type[SchemaRoot[_S]]:
     )
 
 
+def _root_bound(body: DirLayout) -> OneDefn:
+    return OneDefn(Dir(name="."), body)
+
+
 class Schema(FixedDir, metaclass=SchemaCls):
     schema: ClassVar["Layout"] = {}
-    _schema_defn: ClassVar[DirDefn] = DirDefn(Dir(name="."))
+    warn: ClassVar[bool] = True
+    _schema_defn: ClassVar[DirLayout] = DirLayout()
 
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
@@ -627,10 +696,11 @@ class Schema(FixedDir, metaclass=SchemaCls):
     @classmethod
     def relative_to(cls: type[_S], root: PathIsh) -> "SchemaRoot[_S]":
         """Exception: raises on an unsafe path"""
-        from ._plan import plan_dir_defn_children
+        from ._plan import plan_layout_children_exn
 
         path = safe_path_exn(Path(root))  # caller error
-        return _root_type_for(cls)(path, plan_dir_defn_children(path, cls._schema_defn), cls._schema_defn)
+        body = cls._schema_defn
+        return _root_type_for(cls)(path, plan_layout_children_exn(path, body), _root_bound(body))
 
     @classmethod
     def bind(cls: type[_S], root: PathIsh, *, fast: bool = False) -> "_S | MismatchErr":
@@ -638,9 +708,10 @@ class Schema(FixedDir, metaclass=SchemaCls):
         from ._bind import bind_children
 
         path = safe_path_exn(Path(root))  # caller error
-        if is_mismatch(children := bind_children(path, cls._schema_defn, {}, fast=fast)):
+        body = cls._schema_defn
+        if is_mismatch(children := bind_children(path, body, {}, fast=fast)):
             return children
-        return cls(path, children, cls._schema_defn)
+        return cls(path, children, _root_bound(body))
 
     def root(self) -> "SchemaRoot[Self]":
         return type(self).relative_to(self.path)
@@ -653,6 +724,35 @@ def _schema_ctor_child_names(node: Node) -> tuple[str, ...]:
     if node.name and (normalized := normalize_name(node.name)) not in names:
         names.append(normalized)
     return tuple(names)
+
+
+class _BranchTable:
+    """Declaration of a union. Not a schema class, and not the bound value"""
+
+    _branches: tuple[tuple[str | None, type[Schema]], ...]
+
+    def __init__(self, layouts: Sequence[DirLayout]) -> None:
+        branches: list[tuple[str | None, type[Schema]]] = []
+        for layout in layouts:
+            child = layout.child_type
+            if child is None:
+                continue
+            branches.append((layout.name, child))
+            if layout.name is not None:
+                setattr(self, layout.name, child)
+        self._branches = tuple(branches)
+
+    def __getitem__(self, key: str | int) -> type[Schema]:
+        if isinstance(key, str):
+            for name, child in self._branches:
+                if name == key:
+                    return child
+            raise KeyError(key)
+        unnamed = tuple(child for name, child in self._branches if name is None)
+        try:
+            return unnamed[key]
+        except IndexError:
+            raise KeyError(key) from None
 
 
 class _DeclAttr:
@@ -670,7 +770,7 @@ class _DeclAttr:
 
 def _schema_ctor_install_attrs(cls: type[Schema]) -> None:
     # Runs once, after shadow checks, when the class is created.
-    # A directory whose value is a schema class is that class.
+    # One unnamed directory schema is that class. A union stays a table so each branch stays addressable.
     # A file or a repeated name is a view: a generated class with alias, fmt, and with_.
     # Alias and normalized basename are the same object. Nothing is built again on lookup.
     from ._compile import member_view, schema_defn_for
@@ -681,11 +781,13 @@ def _schema_ctor_install_attrs(cls: type[Schema]) -> None:
         names = _schema_ctor_child_names(node)
         if not names:
             continue
-        if node.name and isinstance(defn, File):
-            target: object = member_view(cls, FixedFile, node)
+        if isinstance(defn, DirDefn) and is_union(defn.layouts):
+            target: object = _BranchTable(defn.layouts)
+        elif node.name and isinstance(defn, File):
+            target = member_view(cls, FixedFile, node)
         elif node.name and isinstance(defn, DirDefn):
             # An exact directory's child class is set when the directory is compiled.
-            child_type = defn.child_type
+            child_type = defn.layouts[0].child_type if defn.layouts else None
             if child_type is None:
                 raise AssertionError("exact directory has no child class")
             target = child_type
@@ -702,3 +804,12 @@ def _schema_ctor_install_attrs(cls: type[Schema]) -> None:
 
 # Beartype resolves DirDefn's quoted Schema on this module, after the class exists.
 _decl.Schema = Schema  # pyright: ignore[reportPrivateLocalImportUsage]
+
+# Layout is static-only. A branch body is a dict the checker cannot pair with its key.
+_XorBody: TypeAlias = dict[str | Dir[Schema] | _decl.FilesKey, object]
+
+
+def xor(*branches: type[Schema] | _XorBody, **named: type[Schema] | _XorBody) -> Xor:
+    entries = tuple((None, branch) for branch in branches)
+    entries += tuple(named.items())
+    return Xor(entries)

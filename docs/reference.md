@@ -15,7 +15,7 @@ import fs_schema as fss
 | Area | Names |
 | --- | --- |
 | Schemas | `Schema`, `SchemaRoot`, `Layout` |
-| Declarations | `File`, `Dir`, `FILES`, `dt` |
+| Declarations | `File`, `Dir`, `FILES`, `xor`, `dt` |
 | Paths and matches | `Located`, `Match`, `exists_opt` |
 | Result helpers | `MismatchErr`, `is_mismatch`, `raise_mismatch`, `raise_exn` |
 | Writing | `put`, `link_to`, `copy_to`, `captures`, `create` |
@@ -245,6 +245,10 @@ dt(pattern: str) -> FmtLike
 
 The mapping table above defines the valid `Layout` key-value pairings.
 
+### Warnings
+
+`Schema.warn` is `True`. `warn = False` on a subclass silences warnings from that class.
+
 ## Applying schemas
 
 `bind` checks the tree.
@@ -308,9 +312,9 @@ request_exists = delivery.transfer.request_json.exists()
 `Located` promises only `.path` and `__fspath__`. Concrete fixed values also
 have `exists()`. Fixed files add `read_bytes()`, `read_text()`, and `create()`.
 
-Children support attribute access and exact item lookup. An explicit alias is
-used unchanged. Otherwise, each run outside `[A-Za-z0-9_]` in the disk name
-becomes `_`.
+Children support attribute access and item lookup. An alias is an attribute.
+So is the disk name, with characters outside `[A-Za-z0-9_]` replaced by `_`.
+Item lookup also accepts the raw disk name.
 
 A directory, schema, root, or bound directory iterates its children.
 A collection iterates its matches.
@@ -617,3 +621,57 @@ Raise an issue if one of these is a problem.
 - `link_to` replaces a file or a link. It can point at a missing path. It does not replace a real directory.
 - `copy_to(follow_symlinks=True)` writes regular files and directories, including a link that points at a directory. `False` copies the link text unchanged.
 - A link at the destination is replaced, not written through. A dangling link is missing to `exists_opt`.
+
+## xor
+
+Exclusive union. One branch binds, in definition order. The first success wins.
+
+```text
+xor(*branches: type[Schema] | dict, **named: type[Schema] | dict)
+```
+
+A directory value is one of:
+
+```text
+Schema
+{"dict": "mapping.txt"}
+{}
+xor(UnnamedSchema, {"inline": "schema.txt"}, this_schema=ThisSchema)
+xor(**branches)
+(UnnamedSchema, AnotherSchema)
+```
+
+`Schema`, a dict, and `{}` are one schema. `xor(Letter)` with no keyword is that schema too. `xor(letter=Letter)` and `xor(**branches)` stay a union, so the name still works. A tuple is an unnamed union.
+
+```python
+class Letter(fss.Schema):
+    schema = {"body": "body.txt", "stamp": "stamp.json"}
+
+
+class Table(fss.Schema):
+    schema = {"rows": "rows.json", "stamp": "stamp.json"}
+
+
+class Open(fss.Schema):
+    schema = {"slot": fss.xor(Letter, Table)}
+
+
+class Box(fss.Schema):
+    schema = {"slot": fss.xor(letter=Letter, table=Table)}
+
+
+def publish_note(root: Path) -> str:
+    planned = Open.relative_to(root)
+    planned.slot.body.create("hello\n")
+    planned.slot.stamp.create("{}\n")
+    bound = fss.raise_mismatch(planned.bind())
+    return bound.slot.body.read_text()
+```
+
+Unnamed branches promote their children onto the xor. `planned.slot.body`, `.stamp`, and `.rows` are those files. The same child on every branch is one file. A name that differs warns, and reading it raises. `[0]` is that branch anyway.
+
+A keyword does not promote. `Box.slot.letter` and `Box.slot["letter"]` are the `Letter` class. `Box.relative_to(root).slot.letter.create(body="...", stamp="...")` writes that branch. `slot.create()` on the union raises.
+
+Bind returns the winning schema. `bound.slot` is a `Letter` or a `Table`. `isinstance` tells which. Read `slot.body` or `slot.rows`. The other branch name is not on the bound value. `fast=True` still tries every branch. A directory whose name matched, but no branch bound, is a mismatch. `skip_mismatch` drops that directory.
+
+[Example](https://github.com/heyentropyyield/fs-schema/blob/master/examples/xor_directory.py)

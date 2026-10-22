@@ -10,7 +10,7 @@ from pytest_params import params  # pyright: ignore[reportUnknownVariableType]
 
 from fs_schema import Match
 from fs_schema import _errmsg as em
-from fs_schema._decl import Dir, DirDefn, File
+from fs_schema._decl import Dir, DirDefn, DirLayout, File, OneDefn
 from fs_schema._fmt import CaptureField, CaptureMap, ParsedCaptures
 from fs_schema._schema import (
     DirMatch,
@@ -212,8 +212,9 @@ def test_directory_definition_rejects_cross_child_lookup_collisions(
 def test_directory_lookup_derives_keys_and_keeps_anonymous_collection_integer_only(tmp_path: Path) -> None:
     fixed = FixedFile(tmp_path / "same-name", File(name="same-name", alias="same-name"))
     anonymous = Matches(tmp_path, (), File(fmt="{n:d}", min=0))
-    defn = DirDefn(Dir(name="."), (fixed.defn, anonymous.defn))
-    directory = FixedDir(tmp_path, (fixed, anonymous), defn)
+    node = DirDefn(Dir(name="."), (fixed.defn, anonymous.defn))
+    (layout,) = node.layouts
+    directory = FixedDir(tmp_path, (fixed, anonymous), OneDefn(node.defn, layout))
     assert directory["same-name"] is directory["same_name"] is fixed
     assert directory.same_name is fixed and directory[1] is anonymous
     with pytest.raises(AttributeError):
@@ -224,6 +225,21 @@ def test_directory_lookup_derives_keys_and_keeps_anonymous_collection_integer_on
         _ = directory.anonymous
 
 
+def test_layouts_keyword_replaces_the_child_form() -> None:
+    node: Dir[Schema] = Dir(name="slot")
+    layout = DirLayout()
+
+    class Arm(Schema):
+        pass
+
+    with pytest.raises(AssertionError):
+        DirDefn(node, (File(name="a"),), layouts=(layout,))
+    with pytest.raises(AssertionError):
+        DirDefn(node, child_type=Arm, layouts=(layout,))
+    with pytest.raises(AssertionError):
+        DirDefn(node, name="arm", layouts=(layout,))
+
+
 def test_runtime_constructors_are_beartype_checked(tmp_path: Path) -> None:
     with pytest.raises(BeartypeCallHintParamViolation):
         FixedFile(tmp_path, object())  # pyright: ignore[reportArgumentType]
@@ -232,9 +248,11 @@ def test_runtime_constructors_are_beartype_checked(tmp_path: Path) -> None:
 
 
 def test_directory_match_carries_its_defn_and_captures(tmp_path: Path) -> None:
-    defn = DirDefn(Dir(match=r"run-(?P<n>[0-9]+)"))
-    matched = DirMatch(tmp_path / "run-1", ParsedCaptures((), CaptureMap({"n": "1"})), (), defn)
-    assert matched.defn is defn and matched.defn.defn is defn.defn
+    node = DirDefn(Dir(match=r"run-(?P<n>[0-9]+)"))
+    (layout,) = node.layouts
+    bound = OneDefn(node.defn, layout)
+    matched = DirMatch(tmp_path / "run-1", ParsedCaptures((), CaptureMap({"n": "1"})), (), bound)
+    assert matched.defn is bound and matched.defn.defn is node.defn
     assert matched.kwargs["n"] == "1"
 
 
@@ -244,8 +262,8 @@ def test_schema_ordinary_construction_has_fixed_directory_protocol(tmp_path: Pat
     class Concrete(Schema):
         pass
 
-    defn = DirDefn(Dir(name="."))
-    fixed = Concrete(tmp_path, (), defn)
+    bound = OneDefn(Dir(name="."), DirLayout())
+    fixed = Concrete(tmp_path, (), bound)
     assert type(fixed) is Concrete and fixed.path == tmp_path
     assert not hasattr(fixed, "args") and not hasattr(fixed, "kwargs")
     assert not isinstance(fixed, Match)
