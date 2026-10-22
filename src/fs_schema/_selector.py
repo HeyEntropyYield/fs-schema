@@ -3,8 +3,8 @@ from typing import Final
 
 import fs_schema._errmsg as em
 
-from ._fmt import CaptureMap, CompiledFormat, FmtLike, ParsedCaptures
-from ._types import FmtFieldT
+from ._fmt import CaptureMap, CompiledFormat, ParsedCaptures, compile_match
+from ._types import FmtFieldT, FmtStr, MatchPat, Name, Raw, Safe
 
 
 class Selector:
@@ -14,16 +14,16 @@ class Selector:
     _fmt: CompiledFormat | None
     _match: re.Pattern[str] | None
 
-    def __init__(self, fmt: FmtLike | None, match: str | None) -> None:
-        self._fmt = CompiledFormat(fmt) if fmt is not None else None
-        self._match = re.compile(match) if match is not None else None
+    def __init__(self, fmt: Safe[FmtStr] | None, match: Raw[MatchPat] | None) -> None:
+        self._fmt = CompiledFormat(fmt) if fmt else None
+        self._match = compile_match(match) if match else None
 
-    def captures(self, basename: str) -> ParsedCaptures | None:
-        if self._fmt is not None:
+    def captures(self, basename: Safe[Name]) -> ParsedCaptures | None:
+        if self._fmt:
             if (captures := self._fmt.parse(basename)) is None:
                 return None
-            return captures if self._match is None or self._match.fullmatch(basename) else None
-        if self._match is None:
+            return captures if not self._match or self._match.fullmatch(basename) else None
+        if not self._match:
             return ParsedCaptures((), CaptureMap({}))
         if (matched := self._match.fullmatch(basename)) is None:
             return None
@@ -33,24 +33,24 @@ class Selector:
             CaptureMap(matched.groupdict()),
         )
 
-    def format(self, *args: FmtFieldT, **kwargs: FmtFieldT) -> str:
+    def format(self, *args: FmtFieldT, **kwargs: FmtFieldT) -> Raw[Name]:
         """Exception: raises to support chaining"""
-        if self._fmt is None:
+        if not self._fmt:
             raise TypeError(em.Fmt.NONE)
         basename = self._fmt.format(*args, **kwargs)
-        if self._match is not None and self._match.fullmatch(basename) is None:
+        if self._match and self._match.fullmatch(basename) is None:
             raise ValueError(em.Fmt.pattern(self._match.pattern, basename))
         return basename
 
     def capture_names(self) -> frozenset[str]:
-        if self._fmt is not None:
-            return frozenset(field.name for field in self._fmt.fields if not field.positional)
-        if self._match is not None:
+        if self._fmt:
+            return frozenset(field.field_name for field in self._fmt.fields if not field.positional)
+        if self._match:
             return frozenset(self._match.groupindex)
         return frozenset()
 
-    def match_failure(self, basename: str) -> str | None:
-        if self._fmt is None or self._match is None or self._fmt.parse(basename) is None:
+    def match_failure(self, basename: Safe[Name]) -> str | None:
+        if not self._fmt or not self._match or self._fmt.parse(basename) is None:
             return None
         if self._match.fullmatch(basename) is None:
             return self._match.pattern

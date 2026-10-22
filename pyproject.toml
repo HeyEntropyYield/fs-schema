@@ -25,6 +25,7 @@ classifiers = [
 ]
 
 dependencies = [
+  "attrs>=24.1",
   "beartype>=0.19",
   "parse",
   "plum-dispatch>=2",

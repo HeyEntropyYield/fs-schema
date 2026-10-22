@@ -12,7 +12,7 @@ from typing_extensions import Self, assert_never
 
 import fs_schema._errmsg as em
 
-from ._types import FmtFieldT
+from ._types import FmtFieldT, FmtStr, Name, Raw, Safe
 
 # These types only exist for enforced typechecking
 _Field: TypeAlias = str | int | float | Decimal | date | time | datetime
@@ -23,7 +23,7 @@ class _Result(Protocol):
     named: dict[str, _Field]
 
 
-def _parselib_parse(parser: Parser, text: str) -> _Result | None:
+def _parselib_parse(parser: Parser, text: Safe[Name]) -> _Result | None:
     if not (found := parser.parse(text)):
         return None
     return cast(_Result, found)
@@ -46,13 +46,13 @@ class Spec:
     __slots__: Final = ("_parser",)
     _parser: Parser
 
-    def __init__(self, pattern: str) -> None:
+    def __init__(self, pattern: Raw[FmtStr]) -> None:
         """Exception: raises on unsupported type"""
         self._parser = Parser(pattern, case_sensitive=True)
         for sample in _samples(self._parser):
             _ = value_exn(sample)  # unsupported type
 
-    def parse(self, text: str) -> _Parsed | None:
+    def parse(self, text: Safe[Name]) -> _Parsed | None:
         """Exception: raises on unsupported type"""
         if not (result := _parselib_parse(self._parser, text)):
             return None

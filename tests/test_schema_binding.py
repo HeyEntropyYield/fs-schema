@@ -634,3 +634,28 @@ def test_bound_graph_is_immutable_history_and_new_bind_observes_changes(tmp_path
     assert isinstance(fresh, Root)
     fresh_runs = fresh.runs
     assert isinstance(fresh_runs, Template) and len(fresh_runs) == 2
+
+
+def test_unsafe_directory_entry_is_skipped(tmp_path: Path) -> None:
+    bad = "a\\b"
+    _touch(tmp_path, bad, "ok.txt")
+    files = _bind(tmp_path, (File(fmt="{stem}.txt"),))
+    assert isinstance(files, FixedDir)
+    file_matches = files[0]
+    assert isinstance(file_matches, Template) and [match.path.name for match in file_matches] == ["ok.txt"]
+
+    nested = tmp_path / "dirs"
+    _touch(nested)
+    (nested / bad).mkdir()
+    (nested / "ok").mkdir()
+    directories = _bind(nested, (DirDefn(Dir(fmt="{stem}")),))
+    assert isinstance(directories, FixedDir)
+    dir_matches = directories[0]
+    assert isinstance(dir_matches, Template) and [match.path.name for match in dir_matches] == ["ok"]
+
+    gone = tmp_path / "gone"
+    gone.mkdir()
+    (gone / bad).symlink_to(gone / "missing")
+    err = _bind(gone, (File(fmt="{stem}", min=1),))
+    assert isinstance(err, MismatchErr)
+    assert bad not in str(err)

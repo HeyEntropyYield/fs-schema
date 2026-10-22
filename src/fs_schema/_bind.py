@@ -11,6 +11,7 @@ from typing_extensions import TypeIs, TypeVar
 import fs_schema._errmsg as em
 
 from ._decl import Defn, DirDefn, File, Match, Node, defn_node
+from ._fmt import child_path_exn, safe, safe_path_exn
 from ._ops import MismatchErr, is_mismatch
 from ._schema import (
     BOUND_MATCH,
@@ -25,6 +26,7 @@ from ._schema import (
     stored_type,
 )
 from ._std_ext import CacheSeq
+from ._types import Name, Raw, Safe, SafePath
 
 _L = TypeVar("_L")
 _MatchT = TypeVar("_MatchT")
@@ -63,6 +65,7 @@ def _bound_dir_match_type(defn: DirDefn) -> type[DirMatch]:
     )
 
 
+# Proved directory keys. Values stay iterdir entries so _listed can reject a name
 _FsCache: TypeAlias = dict[Path, CacheSeq[Path]]
 _MatchValue = TypeVar("_MatchValue", bound=Match)
 
@@ -74,14 +77,24 @@ def _bind_is_kind(path: Path, defn: Defn) -> bool:
     return path.is_file() if isinstance(defn, File) else path.is_dir()
 
 
-def _bind_dangling_names(defn: Defn, listing: Sequence[Path]) -> list[str]:
+def _listed(target: Path) -> tuple[SafePath, Safe[Name]] | None:
+    # Directory entry. Not an alias or a format field. Unsafe names are skipped
+    if not (name := safe(Raw[Name](target.name))):
+        return None
+    return safe_path_exn(target), name
+
+
+def _bind_dangling_names(defn: Defn, listing: Sequence[Path]) -> list[Safe[Name]]:
     node = defn_node(defn)
-    names: list[str] = []
+    names: list[Safe[Name]] = []
     for target in listing:
         if _bind_is_kind(target, defn) or not target.is_symlink() or target.exists():
             continue
-        if node.select(target.name) is not None:
-            names.append(target.name)
+        if (listed := _listed(target)) is None:
+            continue
+        _, name = listed
+        if node.select(name) is not None:
+            names.append(name)
     return names
 
 
@@ -103,6 +116,7 @@ def _aggregate(failures: Sequence[MismatchErr]) -> MismatchErr:
 def bind_children(
     path: Path, dir_defn: DirDefn, cache: _FsCache, *, fast: bool = False
 ) -> tuple[BoundChild, ...] | MismatchErr:
+    path = safe_path_exn(path)  # caller error
     if not path.is_dir():
         return _mismatch(f"expected directory: {path}")
 
@@ -128,14 +142,14 @@ def _bind_listing(path: Path, cache: _FsCache) -> CacheSeq[Path]:
 
 
 def _bind_dir_defn(
-    path: Path, position: int, defn: Defn, cache: _FsCache, *, fast: bool = False
+    path: SafePath, position: int, defn: Defn, cache: _FsCache, *, fast: bool = False
 ) -> BoundChild | MismatchErr:
     node = defn_node(defn)
     if node.name:
-        target = path / node.name
+        target = child_path_exn(path, node.name)
         if node.min == 0 and node.name != "." and not target.exists():
             return None
-        if node.select(target.name) is None:
+        if node.select(node.name) is None:
             return _mismatch(em.Bind.fixed(node.match, target))
         if not _bind_is_kind(target, defn):
             message = em.Bind.file(target) if isinstance(defn, File) else em.Bind.directory(target)
@@ -157,9 +171,10 @@ def _bind_dir_defn(
             )))  # fmt: skip
     if failures:
         return _aggregate(failures)
-    return Template(path, matches, defn) if node.fmt is not None else Matches(path, matches, defn)
+    return Template(path, matches, defn) if node.fmt else Matches(path, matches, defn)
 
 
+# plum cannot carry SafePath. child_path_exn or _listed already proved this path
 @overload
 def _bind_fixed(path: Path, defn: File[_L], cache: _FsCache, *, fast: bool = False) -> FixedFile[_L]: ...
 
@@ -176,11 +191,13 @@ def _bind_fixed(
 
 @dispatch
 def _bind_fixed_kind(path: Path, defn: File, cache: _FsCache, fast: bool = False) -> FixedFile:  # pyright: ignore[reportRedeclaration]
+    path = SafePath(path)  # plum boundary
     return FixedFile(path, defn)
 
 
 @dispatch
 def _bind_fixed_kind(path: Path, defn: DirDefn, cache: _FsCache, fast: bool = False) -> FixedDir | MismatchErr:
+    path = SafePath(path)  # plum boundary
     if is_mismatch(children := bind_children(path, defn, cache, fast=fast)):
         return children
     return (defn.child_type or FixedDir)(path, children, defn)
@@ -200,9 +217,8 @@ def _bind_sort_matches(matches: list[_MatchValue], node: Node) -> list[_MatchVal
     return matches
 
 
-def _bind_failed_match(node: Node, basename: str) -> MismatchErr | None:
-    pattern = node.selector.match_failure(basename)
-    if pattern is None:
+def _bind_failed_match(node: Node, basename: Safe[Name]) -> MismatchErr | None:
+    if (pattern := node.selector.match_failure(basename)) is None:
         return None
     return _mismatch(em.Bind.failed(pattern, basename))
 
@@ -213,14 +229,17 @@ def _bind_file_matches(defn: File[_L], listing: Sequence[Path], *, fast: bool = 
     for target in listing:
         if not _bind_is_kind(target, defn):
             continue
-        if is_mismatch(failed := _bind_failed_match(defn, target.name)):
+        if (listed := _listed(target)) is None:
+            continue
+        target, name = listed
+        if is_mismatch(failed := _bind_failed_match(defn, name)):
             if defn.skip_mismatch:
                 continue
             if fast:
                 return matches, [failed]
             failures.append(failed)
             continue
-        if (captures := defn.select(target.name)) is None:
+        if (captures := defn.select(name)) is None:
             continue
         matches.append(FileMatch(target, captures, defn))
     return _bind_sort_matches(matches, defn), failures
@@ -236,14 +255,17 @@ def _bind_dir_matches(
     for target in listing:
         if not _bind_is_kind(target, defn):
             continue
-        if is_mismatch(failed := _bind_failed_match(node, target.name)):
+        if (listed := _listed(target)) is None:
+            continue
+        target, name = listed
+        if is_mismatch(failed := _bind_failed_match(node, name)):
             if node.skip_mismatch:
                 continue
             if fast:
                 return matches, [failed]
             failures.append(failed)
             continue
-        if (captures := node.select(target.name)) is None:
+        if (captures := node.select(name)) is None:
             continue
         if is_mismatch(children := bind_children(target, defn, cache, fast=fast)):
             if node.skip_mismatch:

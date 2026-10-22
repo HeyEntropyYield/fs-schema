@@ -1,7 +1,9 @@
 # pyright: reportPrivateUsage=false
+import re
 from datetime import date, datetime, time
 from decimal import Decimal
 from functools import partial
+from pathlib import Path
 from typing import get_args
 
 import pytest
@@ -10,6 +12,16 @@ from pytest_params import params  # pyright: ignore[reportUnknownVariableType]
 
 from fs_schema import _errmsg as em
 from fs_schema import _fmt, _fmt_spec, _types
+
+
+def _compile(pattern: str) -> _fmt.CompiledFormat:
+    return _fmt.CompiledFormat(_types.Raw[_types.FmtStr](pattern))
+
+
+def _name(text: str) -> _types.Safe[_types.Name]:
+    proved = _fmt.safe(_types.Raw[_types.Name](text))
+    assert proved is not None
+    return proved
 
 
 def test_capture_map_supports_keys_attributes_and_mapping_collisions() -> None:
@@ -25,7 +37,7 @@ def test_capture_map_supports_keys_attributes_and_mapping_collisions() -> None:
 
 
 def test_compiled_format_round_trips_named_string_and_integer_fields() -> None:
-    compiled = _fmt.CompiledFormat("part-{part:d}-{label}.json")
+    compiled = _compile("part-{part:d}-{label}.json")
     assert compiled.pattern == "part-{part:d}-{label}.json"
     assert compiled.fields == (
         _fmt.FormatField("part", 0, "d"),
@@ -35,7 +47,7 @@ def test_compiled_format_round_trips_named_string_and_integer_fields() -> None:
     assert all(not field.positional for field in compiled.fields)
     basename = compiled.format(part=2, label="ready")
     assert basename == "part-2-ready.json"
-    parsed = compiled.parse(basename)
+    parsed = compiled.parse(_fmt.safe_exn(basename))
     assert isinstance(parsed, _fmt.ParsedCaptures)
     assert parsed.args == ()
     assert type(parsed.kwargs) is _fmt.CaptureMap
@@ -43,7 +55,7 @@ def test_compiled_format_round_trips_named_string_and_integer_fields() -> None:
 
 
 def test_compiled_format_round_trips_auto_and_numbered_positional_fields() -> None:
-    automatic = _fmt.CompiledFormat("{}-{:d}")
+    automatic = _compile("{}-{:d}")
     assert automatic.fields == (
         _fmt.FormatField("", 0),
         _fmt.FormatField("", 1, "d"),
@@ -51,61 +63,61 @@ def test_compiled_format_round_trips_auto_and_numbered_positional_fields() -> No
     assert all(field.positional for field in automatic.fields)
     basename = automatic.format("name", 3)
     assert basename == "name-3"
-    parsed = automatic.parse(basename)
+    parsed = automatic.parse(_fmt.safe_exn(basename))
     assert parsed is not None
     assert parsed.args == ("name", 3)
     assert parsed.kwargs == {}
 
-    numbered = _fmt.CompiledFormat("{0}-{1:d}")
+    numbered = _compile("{0}-{1:d}")
     assert all(field.positional for field in numbered.fields)
     assert numbered.format("item", 4) == "item-4"
-    parsed_numbered = numbered.parse("item-4")
+    parsed_numbered = numbered.parse(_name("item-4"))
     assert parsed_numbered is not None
     assert parsed_numbered.args == ("item", 4)
 
 
 def test_datetime_formats_round_trip_named_and_public_dt_fields() -> None:
     moment = datetime(2026, 9, 14, 19, 51)
-    named = _fmt.CompiledFormat("run-{moment:%Y%m%d-%H%M}")
+    named = _compile("run-{moment:%Y%m%d-%H%M}")
     assert named.fields == (_fmt.FormatField("moment", 0, "%Y%m%d-%H%M"),)
     assert type(named.fields[0]) is _fmt.FormatField
     basename = named.format(moment=moment)
     assert basename == "run-20260914-1951"
-    parsed = named.parse(basename)
+    parsed = named.parse(_fmt.safe_exn(basename))
     assert parsed is not None
     assert parsed.kwargs == {"moment": moment}
 
-    date_pattern: _fmt.FmtLike = _fmt.dt("%Y%m%d")
+    date_pattern: _types.Raw[_types.FmtStr] = _fmt.dt("%Y%m%d")
     date_only = _fmt.CompiledFormat(date_pattern)
     assert date_only.format(ts=moment) == "20260914"
-    parsed_date = date_only.parse("20260914")
+    parsed_date = date_only.parse(_name("20260914"))
     assert parsed_date is not None
     assert parsed_date.kwargs == {"ts": datetime(2026, 9, 14)}
 
     positional = _fmt.CompiledFormat(_fmt.dt("%Y%m%d", ""))
     assert positional.format(moment) == "20260914"
-    parsed_positional = positional.parse("20260914")
+    parsed_positional = positional.parse(_name("20260914"))
     assert parsed_positional is not None
     assert parsed_positional.args == (datetime(2026, 9, 14),)
 
 
 def test_parser_requires_a_complete_case_sensitive_basename() -> None:
-    compiled = _fmt.CompiledFormat("Part-{part:d}.json")
-    assert compiled.parse("Part-1.json") is not None
-    assert compiled.parse("part-1.json") is None
-    assert compiled.parse("prefix-Part-1.json") is None
-    assert compiled.parse("Part-1.json.bak") is None
+    compiled = _compile("Part-{part:d}.json")
+    assert compiled.parse(_name("Part-1.json")) is not None
+    assert compiled.parse(_name("part-1.json")) is None
+    assert compiled.parse(_name("prefix-Part-1.json")) is None
+    assert compiled.parse(_name("Part-1.json.bak")) is None
 
 
 def test_malformed_pattern_surfaces_native_failure() -> None:
     with pytest.raises(ValueError):
-        _fmt.CompiledFormat("{unclosed")
+        _compile("{unclosed")
 
 
 @params("pattern", [("clock", "{value:%H:%M}"), ("named", "{value:tt}")])
 def test_time_only_capture_fails_when_the_pattern_is_compiled(pattern: str) -> None:
     with pytest.raises(TypeError, match=em.Fmt.TIME):
-        _fmt.CompiledFormat(pattern)
+        _compile(pattern)
 
 
 def test_time_value_is_rejected_if_parse_yields_one() -> None:
@@ -120,13 +132,13 @@ def test_time_value_is_rejected_if_parse_yields_one() -> None:
 ])  # fmt: skip
 def test_other_parsed_types_fail_when_the_pattern_is_compiled(pattern: str, kind: str) -> None:
     with pytest.raises(TypeError, match=em.Fmt.value(kind)):
-        _fmt.CompiledFormat(pattern)
+        _compile(pattern)
 
 
 def test_strftime_spec_with_a_bad_directive_fails() -> None:
     # Parser accepts this because it contains %Y. strptime rejects %Q
     with pytest.raises(TypeError, match=em.Fmt.value("%Y%Q")):
-        _fmt.CompiledFormat("{value:%Y%Q}")
+        _compile("{value:%Y%Q}")
 
 
 def test_unknown_converter_is_rejected() -> None:
@@ -139,8 +151,8 @@ def test_unknown_converter_is_rejected() -> None:
 
 
 def test_named_date_spec_parses_datetime() -> None:
-    compiled = _fmt.CompiledFormat("{value:ti}")
-    parsed = compiled.parse("2001-02-03T04:05:06")
+    compiled = _compile("{value:ti}")
+    parsed = compiled.parse(_name("2001-02-03T04:05:06"))
     assert parsed is not None
     assert parsed.kwargs == {"value": datetime(2001, 2, 3, 4, 5, 6)}
 
@@ -155,6 +167,35 @@ def test_format_types_are_exact_and_atomic_inputs_are_beartyped() -> None:
     with pytest.raises(BeartypeCallHintParamViolation):
         _fmt.CompiledFormat(1)  # pyright: ignore[reportArgumentType]
     with pytest.raises(BeartypeCallHintParamViolation):
-        _fmt.CompiledFormat("{value}").format(value=1.5)  # pyright: ignore[reportArgumentType]
+        _compile("{value}").format(value=1.5)  # pyright: ignore[reportArgumentType]
     with pytest.raises(BeartypeCallHintParamViolation):
-        _fmt.CompiledFormat("{value}").format(value=None)  # pyright: ignore[reportArgumentType]
+        _compile("{value}").format(value=None)  # pyright: ignore[reportArgumentType]
+
+
+@params(("pattern", "message"), [
+    ("slash", "a/{x}", em.Fmt.literal("a/{x}")),
+    ("backslash", "a\\{x}", em.Fmt.literal("a\\{x}")),
+    ("nul", "a\0{x}", em.Fmt.literal("a\0{x}")),
+    ("dot", ".", em.Fmt.basename(".")),
+    ("dotdot", "..", em.Fmt.basename("..")),
+    ("field", "{foo.bar}", em.Fmt.field("foo.bar")),
+    ("index", "{foo[0]}", em.Fmt.field("foo[0]")),
+    ("conversion", "{x!r}", em.Fmt.CONV),
+])  # fmt: skip
+def test_format_pattern_rejects_unsafe_literals_fields_and_conversions(pattern: str, message: str) -> None:
+    with pytest.raises(ValueError, match=re.escape(message)):
+        _compile(pattern)
+
+
+def test_literal_basename_pattern_is_safe_and_a_dotted_field_pattern_stays() -> None:
+    assert _compile("file.txt").format() == "file.txt"
+    assert _compile("{stem}.json").format(stem="a") == "a.json"
+
+
+def test_safe_path_accepts_an_anchor_and_rejects_a_bad_component() -> None:
+    root = _fmt._safe_path(Path("/"))
+    assert root is not None
+    assert root == Path("/")
+    assert _fmt.path_name_exn(root) == ""
+    with pytest.raises(ValueError, match=re.escape(em.Fmt.basename("a/../b"))):
+        _fmt.safe_path_exn(Path("a/../b"))

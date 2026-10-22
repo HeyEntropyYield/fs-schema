@@ -38,11 +38,32 @@ from ._decl import (
     normalize_name,
     validate_capture_names_exn,
 )
-from ._fmt import CaptureField, CaptureMap, FmtLike, ParsedCaptures, is_safe_basename
+from ._fmt import (
+    CaptureField,
+    CaptureMap,
+    ParsedCaptures,
+    child_path_exn,
+    path_name_exn,
+    safe,
+    safe_path_exn,
+)
 from ._ops import MismatchErr, is_mismatch, load, put, raise_exn
 from ._ops import copy_to as copy_path
 from ._ops import link_to as link_path
-from ._types import CreateTop, CreateValue, FmtFields, FmtFieldT, PathIsh, Puttable
+from ._types import (
+    CreateTop,
+    CreateValue,
+    FmtFields,
+    FmtFieldT,
+    FmtStr,
+    MatchPat,
+    Name,
+    PathIsh,
+    Puttable,
+    Raw,
+    Safe,
+    SafePath,
+)
 
 
 @final
@@ -82,13 +103,13 @@ _Defn_co = TypeVar("_Defn_co", bound=Defn, covariant=True, default=Defn)
 
 
 class _Fixed:
-    _path: Path
+    _path: SafePath
 
     def __init__(self, path: PathIsh) -> None:
-        self._path = Path(path)
+        self._path = safe_path_exn(Path(path))  # caller error
 
     @property
-    def path(self) -> Path:
+    def path(self) -> SafePath:
         return self._path
 
     def __fspath__(self) -> str:
@@ -105,8 +126,8 @@ class _Fixed:
         return self.path < path
 
     @property
-    def name(self) -> str:
-        return self.path.name
+    def name(self) -> Safe[Name]:
+        return path_name_exn(self.path)
 
     @property
     def stem(self) -> str:
@@ -131,8 +152,8 @@ class _Fixed:
 
 class FixedFile(_Fixed, Generic[_L_co]):
     alias: ClassVar[str | None]
-    fmt: ClassVar[FmtLike | None]
-    match: ClassVar[str | None]
+    fmt: ClassVar[Safe[FmtStr] | None]
+    match: ClassVar[Raw[MatchPat] | None]
     min: ClassVar[int]
     max: ClassVar[int | None]
     defn: File[_L_co]
@@ -195,11 +216,11 @@ class FileMatch(_CaptureState, FixedFile[_L_co], Generic[_L_co]):
 
 class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
     alias: ClassVar[str | None]
-    fmt: ClassVar[FmtLike | None]
-    match: ClassVar[str | None]
+    fmt: ClassVar[Safe[FmtStr] | None]
+    match: ClassVar[Raw[MatchPat] | None]
     min: ClassVar[int]
     max: ClassVar[int | None]
-    path: Path
+    path: SafePath
     _matches: tuple[_M_co, ...]
     defn: _Defn_co
     fmt_fields: FmtFields
@@ -211,7 +232,7 @@ class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
         defn: _Defn_co,
         fmt_fields: FmtFields | None = None,
     ) -> None:
-        self.path = Path(path)
+        self.path = safe_path_exn(Path(path))  # caller error
         self._matches = tuple(matches)
         self.defn = defn
         self.fmt_fields = dict(fmt_fields or {})
@@ -285,9 +306,9 @@ class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
         from ._plan import plan_fixed
 
         basename = Path(source).name
-        if not is_safe_basename(basename) or defn_node(self.defn).select(basename) is None:
+        if not (name := safe(Raw[Name](basename))) or defn_node(self.defn).select(name) is None:
             raise ValueError(em.Parse.member(basename))
-        return plan_fixed(self.path / basename, self.defn)
+        return plan_fixed(child_path_exn(self.path, name), self.defn)
 
 
 def _matches_where_captures(
@@ -416,8 +437,8 @@ else:
 
 class FixedDir(_Fixed):
     alias: ClassVar[str | None]
-    fmt: ClassVar[FmtLike | None]
-    match: ClassVar[str | None]
+    fmt: ClassVar[Safe[FmtStr] | None]
+    match: ClassVar[Raw[MatchPat] | None]
     min: ClassVar[int]
     max: ClassVar[int | None]
     _children: tuple[BoundChild, ...]
@@ -605,16 +626,18 @@ class Schema(FixedDir, metaclass=SchemaCls):
 
     @classmethod
     def relative_to(cls: type[_S], root: PathIsh) -> "SchemaRoot[_S]":
+        """Exception: raises on an unsafe path"""
         from ._plan import plan_dir_defn_children
 
-        path = Path(root)
+        path = safe_path_exn(Path(root))  # caller error
         return _root_type_for(cls)(path, plan_dir_defn_children(path, cls._schema_defn), cls._schema_defn)
 
     @classmethod
     def bind(cls: type[_S], root: PathIsh, *, fast: bool = False) -> "_S | MismatchErr":
+        """Exception: raises on an unsafe path"""
         from ._bind import bind_children
 
-        path = Path(root)
+        path = safe_path_exn(Path(root))  # caller error
         if is_mismatch(children := bind_children(path, cls._schema_defn, {}, fast=fast)):
             return children
         return cls(path, children, cls._schema_defn)
@@ -666,7 +689,7 @@ def _schema_ctor_install_attrs(cls: type[Schema]) -> None:
             if child_type is None:
                 raise AssertionError("exact directory has no child class")
             target = child_type
-        elif node.fmt is not None:
+        elif node.fmt:
             target = member_view(cls, Template, node)
         else:
             target = member_view(cls, Matches, node)

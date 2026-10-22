@@ -74,8 +74,10 @@ def check() -> None:
     assert_type(_bind._bind_matches(text_defn, listing, {}), _bind._MatchRes[_schema.FileMatch[str]])
     assert_type(_bind._bind_matches(dir_defn, listing, {}), _bind._MatchRes[_schema.DirMatch])
     assert_type(_bind._bind_fixed(Path("text"), text_defn, {}), _schema.FixedFile[str])
-    assert_type(_plan.plan_fixed(Path("text"), text_defn), _schema.FixedFile[str])
-    assert_type(_plan.plan_fixed(Path("directory"), dir_defn), _schema.FixedDir)
+    text_path = _fmt.safe_path_exn(Path("text"))
+    dir_path = _fmt.safe_path_exn(Path("directory"))
+    assert_type(_plan.plan_fixed(text_path, text_defn), _schema.FixedFile[str])
+    assert_type(_plan.plan_fixed(dir_path, dir_defn), _schema.FixedDir)
     assert_type(_bind._bind_fixed(Path("directory"), dir_defn, {}), _schema.FixedDir | fss.MismatchErr)
     assert_type(_bind.bind_children(Path("root"), dir_defn, {}), tuple[_schema.BoundChild, ...] | fss.MismatchErr)
 

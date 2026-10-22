@@ -10,10 +10,10 @@ from typing_extensions import TypeIs
 import fs_schema._errmsg as em
 
 from ._decl import Defn, DirDefn, File, Match, capture_names, defn_node, validate_capture_names_exn
-from ._fmt import Captures, captures, is_safe_basename
+from ._fmt import Captures, captures, child_path_exn, safe
 from ._plan import format_any_exn, plan_fixed
 from ._schema import FixedDir, FixedFile, Matches, SchemaCls, Template
-from ._types import CreateTop, FmtFields, PathIsh, Puttable
+from ._types import CreateTop, FmtFields, Name, PathIsh, Puttable, Raw
 
 _Member: TypeAlias = tuple[FmtFields | Captures, CreateTop]
 
@@ -177,9 +177,9 @@ def _write_matches_named_exn(
     names = capture_names(defn)
     node = defn_node(defn)
     for name, body in value.items():
-        if node.select(name) is None or not is_safe_basename(name):
+        if not (found := safe(Raw[Name](name))) or node.select(found) is None:
             raise ValueError(em.Create.member(key, name, filenames=name in names))
-        _write_formatted_exn(defn, plan_fixed(template.path / name, defn), body)  # pyright: ignore[reportArgumentType]
+        _write_formatted_exn(defn, plan_fixed(child_path_exn(template.path, found), defn), body)  # pyright: ignore[reportArgumentType]
 
 
 @dispatch

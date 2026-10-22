@@ -617,6 +617,7 @@ name = "fs-schema"
 version = "0.7.3"
 source = { editable = "." }
 dependencies = [
+    { name = "attrs" },
     { name = "beartype" },
     { name = "parse" },
     { name = "plum-dispatch" },
@@ -674,6 +675,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "attrs", specifier = ">=24.1" },
     { name = "beartype", specifier = ">=0.19" },
     { name = "mashumaro", marker = "extra == 'mashumaro'", specifier = ">=3.11" },
     { name = "mashumaro", extras = ["msgpack"], marker = "extra == 'msgpack'", specifier = ">=3.11" },

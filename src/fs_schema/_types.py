@@ -3,12 +3,41 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import Field
 from datetime import datetime
 from pathlib import Path
-from typing import ClassVar, TypeAlias, TypeVar
+from typing import ClassVar, Generic, NewType, TypeAlias, TypeVar
 
-from typing_extensions import Protocol, runtime_checkable
+from typing_extensions import Protocol, Self, runtime_checkable
 
 # The invariant load value links LoadSpec callables to low-level load results.
 LoadT = TypeVar("LoadT")
+_K = TypeVar("_K")
+
+
+class _Text(str, Generic[_K]):
+    def __new__(cls, value: str) -> Self:
+        return str.__new__(cls, value)
+
+
+class Raw(_Text[_K]):
+    """Unproved text of one kind"""
+
+
+class Safe(Raw[_K]):
+    """Proved text of one kind. A proved value is still that kind"""
+
+
+class Name:
+    """basename"""
+
+
+class FmtStr:
+    """format pattern"""
+
+
+class MatchPat:
+    """match regex"""
+
+
+SafePath = NewType("SafePath", Path)
 
 PathIsh: TypeAlias = str | os.PathLike[str]
 # A parsed template field: {n:d} -> int, {stem} -> str, dt() -> datetime

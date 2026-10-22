@@ -179,6 +179,15 @@ class Fmt:
 
     NONE: Final = _has_no("declaration", "formatter")
     TIME: Final = "time captures are unsupported"
+    CONV: Final = "format conversions are unsupported"
+
+    @staticmethod
+    def literal(pattern: str) -> str:
+        return _quote(_must_be_a("format literal", "basename text"), pattern)
+
+    @staticmethod
+    def field(name: str) -> str:
+        return _must_be_a(f"format field {name!r}", "identifier")
 
     @staticmethod
     def value(kind: str) -> str:

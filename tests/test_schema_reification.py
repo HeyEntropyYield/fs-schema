@@ -55,8 +55,6 @@ def test_reifies_each_raw_grammar_branch_and_stable_class_navigation() -> None:
     ("dir int", {Dir("bad"): 42}),
     ("string int", {"bad": 42}),
     ("int key", {42: "bad"}),
-    ("dot file", {FILES: [File(".")]}),
-    ("nested file", {FILES: [File("nested/file")]}),
     ("bad alias", {FILES: [File("ok", alias="not-valid")]}),
     ("class alias", {FILES: [File("ok", alias="class")]}),
     ("private alias", {FILES: [File("ok", alias="_private")]}),
@@ -64,6 +62,19 @@ def test_reifies_each_raw_grammar_branch_and_stable_class_navigation() -> None:
 def test_invalid_layouts_fail_at_class_creation_with_context(layout: object) -> None:
     with pytest.raises(TypeError, match=re.escape(em.Schema.text("Invalid", ""))):
         _define(layout)
+
+
+@params("name", [
+    ("dot", "."),
+    ("slash", "nested/file"),
+    ("backslash", "nested\\file"),
+])  # fmt: skip
+def test_unsafe_basename_fails_at_construction(name: str) -> None:
+    with pytest.raises(ValueError, match=re.escape(em.Schema.Body.NAME)):
+        File(name)
+    if "/" in name or "\\" in name:
+        with pytest.raises(ValueError, match=re.escape(em.Schema.Body.NAME)):
+            Dir(name)
 
 
 def test_invalid_dir_schema_is_reported_at_containing_class_creation() -> None:

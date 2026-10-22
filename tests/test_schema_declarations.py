@@ -7,7 +7,7 @@ from beartype.roar import BeartypeCallHintParamViolation
 from pytest_params import params  # pyright: ignore[reportUnknownVariableType]
 
 import fs_schema
-from fs_schema import MismatchErr, _decl, _fmt, _schema
+from fs_schema import MismatchErr, _decl, _fmt, _schema, _types
 from fs_schema import _errmsg as em
 
 
@@ -18,7 +18,7 @@ def test_declarations_are_frozen_slotted_values_with_contextual_defaults() -> No
     assert _decl.Dir("values").max == 1
     assert _decl.File("value.txt").max == 1
     assert _decl.File(fmt="many-{n}.txt", max=3).max == 3
-    pattern: _fmt.FmtLike = _fmt.dt("%Y%m%d")
+    pattern: _types.Raw[_types.FmtStr] = _fmt.dt("%Y%m%d")
     templated: _decl.File[object] = _decl.File(fmt=pattern)
     assert templated.fmt == pattern
     assert templated.max is None

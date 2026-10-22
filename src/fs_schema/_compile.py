@@ -2,15 +2,14 @@
 import keyword
 import typing
 from collections.abc import Sequence
-from dataclasses import replace
 from typing import Final
 
+from attrs import evolve
 from typing_extensions import TypeIs, TypeVar
 
 import fs_schema._errmsg as em
 
 from ._decl import FILES, Defn, Dir, DirDefn, File, FilesKey, Node, defn_node, normalize_name
-from ._fmt import is_safe_basename
 from ._schema import Schema, SchemaCls
 
 _L = TypeVar("_L")
@@ -42,8 +41,6 @@ def _is_dot_dir(node: Node, *, alias: bool) -> bool:
 def _compile_local_node_exn(class_name: str, key: object, node: Node) -> None:
     if _is_dot_dir(node, alias=False):
         raise _bad(class_name, key, em.Node.DOT_ALIAS)
-    if node.name and not is_safe_basename(node.name) and not _is_dot_dir(node, alias=True):
-        raise _bad(class_name, key, em.Schema.Body.NAME)
     if node.alias and (not node.alias.isidentifier() or keyword.iskeyword(node.alias) or node.alias.startswith("_")):
         raise _bad(class_name, key, em.Schema.Body.ALIAS)
     if isinstance(node, Dir) and node.schema is not None and not is_schema_type(node.schema):
@@ -51,7 +48,7 @@ def _compile_local_node_exn(class_name: str, key: object, node: Node) -> None:
 
 
 def aliased_file(alias: str, source: File[_L]) -> File[_L]:
-    return source if source.alias == alias else replace(source, alias=alias)
+    return source if source.alias == alias else evolve(source, alias=alias)
 
 
 def _merge_identity(defn: Defn) -> str | None:
@@ -192,7 +189,7 @@ def _compile_local_defns_exn(cls: type[Schema]) -> tuple[Defn, ...]:
                 _compile_local_node_exn(cls.__name__, key, file)
                 defns.append(file)
             case str() as alias, File() as source:
-                file = source if source.alias == alias else replace(source, alias=alias)
+                file = source if source.alias == alias else evolve(source, alias=alias)
                 _compile_local_node_exn(cls.__name__, key, file)
                 defns.append(file)
             case FilesKey() as token, _ if token is FILES:

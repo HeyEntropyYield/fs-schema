@@ -1,18 +1,20 @@
 # pyright: reportImportCycles=false
 import re
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import KW_ONLY, InitVar, dataclass, field, replace
+from dataclasses import dataclass
 from datetime import datetime
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Generic, TypeAlias, final, overload
 
+from attrs import Converter, define, evolve
+from attrs import field as attr_field
 from typing_extensions import Protocol, Self, TypeVar, override, runtime_checkable
 
 import fs_schema._errmsg as em
 
-from ._fmt import CaptureField, CaptureMap, FmtLike, ParsedCaptures
+from ._fmt import CaptureField, CaptureMap, ParsedCaptures, compile_fmt_exn, safe
 from ._selector import Selector
-from ._types import LoadSpec, Located
+from ._types import FmtStr, LoadSpec, Located, MatchPat, Name, Raw, Safe
 
 if TYPE_CHECKING:
     from ._schema import Schema
@@ -43,27 +45,48 @@ SortFn: TypeAlias = Callable[[Match], SortKey]
 ## User schema file/dir declarations
 
 
+def _node_ctor_name_exn(name: str, node: object) -> Safe[Name]:
+    # "" and "." are this path. safe rejects both. child_path_exn keeps the parent
+    if not name or (isinstance(node, Dir) and name == "."):
+        return Safe[Name](name)
+    if not (found := safe(Raw[Name](name))):
+        raise ValueError(em.Schema.Body.NAME)
+    return found
+
+
 # Declaration specs. Exact names are positional scalars (max implicit 1).
 # Collections are keyword-only and need fmt and/or match.
-# `optional` is InitVar: exact ctor sugar for min=0, not stored, not on collections.
-@dataclass(frozen=True, slots=True)
+# `optional` is ctor sugar for min=0. It is not part of equality.
+@define(frozen=True, slots=True, kw_only=True)
 class Node:
-    name: str = ""
-    _: KW_ONLY
-    fmt: FmtLike | None = None
-    match: str | None = None
-    min: int = 1
-    max: int | None = None
-    alias: str | None = None
-    optional: InitVar[bool] = False
-    sort: SortFn | None = None
-    sort_rev: bool = False
-    skip_mismatch: bool = False
-    selector: Selector = field(init=False, repr=False, compare=False)
+    # "" is this path, not a missing name
+    name: Safe[Name] = attr_field(
+        default=Safe[Name](""),
+        kw_only=False,
+        converter=Converter(_node_ctor_name_exn, takes_self=True),
+    )
+    # "" fmt and match are stored as None. A stored value is a real pattern
+    fmt: Safe[FmtStr] | None = attr_field(
+        default=None,
+        converter=lambda fmt: compile_fmt_exn(Raw[FmtStr](fmt))[0] if fmt else None,  # pyright: ignore[reportAny]
+    )
+    match: Raw[MatchPat] | None = attr_field(
+        default=None,
+        converter=lambda m: Raw[MatchPat](m) if m else None,  # pyright: ignore[reportAny]
+    )
+    min: int = attr_field(default=1)
+    max: int | None = attr_field(default=None)
+    # "" is stored as None. A stored alias is an identifier
+    alias: str | None = attr_field(default=None, converter=lambda a: a if a else None)  # pyright: ignore[reportAny]
+    optional: bool = attr_field(default=False, eq=False, repr=False)
+    sort: SortFn | None = attr_field(default=None)
+    sort_rev: bool = attr_field(default=False)
+    skip_mismatch: bool = attr_field(default=False)
+    selector: Selector = attr_field(init=False, eq=False, repr=False)
 
-    def __post_init__(self, optional: bool) -> None:
+    def __attrs_post_init__(self) -> None:
         """Exception: Schema Nodes fail fast"""
-        if optional:
+        if self.optional:
             if not self.name:
                 raise ValueError(em.Node.OPTIONAL)
             object.__setattr__(self, "min", 0)
@@ -73,9 +96,9 @@ class Node:
             object.__setattr__(self, "max", maximum)
 
     def with_(self, /, **changes: object) -> Self:
-        return replace(self, **changes)
+        return evolve(self, **changes)
 
-    def select(self, basename: str) -> ParsedCaptures | None:
+    def select(self, basename: Safe[Name]) -> ParsedCaptures | None:
         return self.selector.captures(basename)
 
 
@@ -84,7 +107,7 @@ def _node_ctor_validate_exn(node: Node) -> tuple[Selector, int | None]:
         raise ValueError(em.Node.DOT_MATCH)
     if not any((node.name, node.fmt, node.match)):
         raise ValueError(em.Node.NEEDS)
-    if node.name and node.fmt is not None:
+    if node.name and node.fmt:
         raise ValueError(em.Node.NAME_FMT)
     if node.name:
         if node.skip_mismatch:
@@ -106,9 +129,9 @@ def _node_ctor_validate_exn(node: Node) -> tuple[Selector, int | None]:
     return Selector(node.fmt, node.match), node.max
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
+@define(frozen=True, slots=True, kw_only=True)
 class File(Node, Generic[_L_co]):
-    schema: LoadSpec[_L_co] | None = None
+    schema: LoadSpec[_L_co] | None = attr_field(default=None)
 
     # Overloads are static. A runtime overload stack would replace the generated __init__.
     if TYPE_CHECKING:
@@ -128,7 +151,7 @@ class File(Node, Generic[_L_co]):
         def __init__(
             self,
             *,
-            fmt: FmtLike,
+            fmt: str,
             match: str | None = None,
             min: int = 1,
             max: int | None = None,
@@ -157,10 +180,10 @@ class File(Node, Generic[_L_co]):
         def __init__(self, *args: object, **kwargs: object) -> None: ...  # pyright: ignore[reportMissingSuperCall]
 
 
-@dataclass(frozen=True, slots=True, kw_only=True)
+@define(frozen=True, slots=True, kw_only=True)
 class Dir(Node, Generic[_D_co]):
     # Optional extra layout contract for whatever appears on this Dir's RHS.
-    schema: type[_D_co] | None = None
+    schema: type[_D_co] | None = attr_field(default=None)
 
     if TYPE_CHECKING:
 
@@ -179,7 +202,7 @@ class Dir(Node, Generic[_D_co]):
         def __init__(
             self,
             *,
-            fmt: FmtLike,
+            fmt: str,
             match: str | None = None,
             min: int = 1,
             max: int | None = None,
@@ -298,8 +321,12 @@ def _dir_defn_ctor_uniq_lookups_exn(child_defns: tuple["Defn", ...]) -> dict[str
 Defn: TypeAlias = File[object] | DirDefn
 
 
-def normalize_name(name: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_]+", "_", name)
+def normalize_name(name: Safe[Name]) -> Safe[Name]:
+    normalized = re.sub(r"[^A-Za-z0-9_]+", "_", name)
+    if normalized == name:
+        return name
+    # The replacement is "_" or an identifier character, so the result stays a basename
+    return Safe[Name](normalized)
 
 
 def defn_node(defn: Defn) -> Node:
