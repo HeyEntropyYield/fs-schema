@@ -1,5 +1,5 @@
 name: Set up uv
-description: Pin-file uv/Python, assert versions/ubuntu+apt, install ShellCheck
+description: Pin-file uv/Python, install versions/apt, assert the image, install ShellCheck
 inputs:
   python-version:
     description: Optional Python version override
@@ -21,9 +21,9 @@ runs:
         version: ${{ steps.versions.outputs.uv }}
         python-version: ${{ inputs.python-version }}
         enable-cache: true
-    - name: Assert runner image matches pin files
+    - name: Install apt pins and assert the image
       shell: bash
-      run: ./run.sh setup:check-image
+      run: ./run.sh setup:apt @@ setup:check-image
     - name: Install pinned shellcheck
       shell: bash
       run: ./run.sh setup:shellcheck

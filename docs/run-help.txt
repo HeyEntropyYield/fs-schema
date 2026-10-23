@@ -13,6 +13,7 @@ Commands:
  Setup
   setup:install-pre-commit     Install git hooks (once per clone; sync first)
   setup:shellcheck             Install pinned shellcheck if not found
+  setup:apt                    Install missing packages from versions/apt
   setup:check-image            Assert /etc/os-release and apt pkgs match pinned versions
   setup:check-installs         Checks all host deps present
  Dep management
@@ -20,7 +21,7 @@ Commands:
   uv:lock                      Write uv.lock. Edit pyproject.toml by hand first (no uv add)
   uv:lock:bootstrap            Re-create uv.lock from scratch, ignore current pins
  Dev: checks
-  lint                         ruff check + shellcheck
+  lint                         ruff check + shellcheck + ascii
   typecheck                    basedpyright
   check                        pre-commit + docs build
   tests                        pytest against the installed package

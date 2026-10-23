@@ -40,6 +40,12 @@ repos:
         files: ^(uv\.lock|pyproject\.toml)$
         language: system
         pass_filenames: false
+      - id: ascii
+        name: ascii
+        entry: scripts/ascii.sh
+        language: system
+        pass_filenames: false
+        always_run: true
       - id: lint
         name: lint
         entry: ./run.sh lint

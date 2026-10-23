@@ -43,7 +43,7 @@ jobs:
       python-versions: ${{ steps.baipp.outputs.supported_python_classifiers_json_job_matrix_value }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: ./run.sh setup:check-image
+      - run: ./run.sh setup:apt @@ setup:check-image
       - id: baipp
         uses: hynek/build-and-inspect-python-package@2abe76da66d0a6a4a227101f9348ee855797cfa5 # v3.0.1
 

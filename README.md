@@ -75,10 +75,10 @@ use Mashumaro for JSON; install the `mashumaro` or faster `orjson` extra.
 
 </details>
 
-[API reference](https://heyentropyyield.github.io/fs-schema/reference/) ·
-[Tutorial](https://heyentropyyield.github.io/fs-schema/tutorial/) ·
-[Changelog](https://heyentropyyield.github.io/fs-schema/changelog/) ·
-[Source](https://github.com/HeyEntropyYield/fs-schema) ·
+[API reference](https://heyentropyyield.github.io/fs-schema/reference/) |
+[Tutorial](https://heyentropyyield.github.io/fs-schema/tutorial/) |
+[Changelog](https://heyentropyyield.github.io/fs-schema/changelog/) |
+[Source](https://github.com/HeyEntropyYield/fs-schema) |
 [MIT LICENSE](https://heyentropyyield.github.io/fs-schema/LICENSE)
 
 <details markdown="1">

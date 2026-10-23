@@ -79,9 +79,9 @@ class Delivery(fss.Schema):
 | `FILES: ["file.ext", File(...)]` | Files in the current directory |
 
 `name` is the only positional arg. Need `name`, `fmt`, or `match`.
-`Dir(...): Child` → child type is `Child`.
-Inline `{...}` → private Schema with stable identity.
-`Dir(schema=Required)` → class-time subset check. RHS still owns children.
+`Dir(...): Child` -> child type is `Child`.
+Inline `{...}` -> private Schema with stable identity.
+`Dir(schema=Required)` -> class-time subset check. RHS still owns children.
 
 ### Templates, matching, and allowed match counts
 
@@ -99,9 +99,9 @@ Inline `{...}` → private Schema with stable identity.
 
 `name` + `match` validates that basename.
 `fmt` + `match` filters; captures stay from `fmt`.
-`match` alone: unnamed groups → `args`, named → `kwargs`. Optional groups → `None`.
+`match` alone: unnamed groups -> `args`, named -> `kwargs`. Optional groups -> `None`.
 
-Untyped format fields → `str`. `:d` → `int`. Datetime fields → `datetime`.
+Untyped format fields -> `str`. `:d` -> `int`. Datetime fields -> `datetime`.
 
 ```python
 part_decl = fss.File(
@@ -111,7 +111,7 @@ part_decl = fss.File(
 day_decl = fss.Dir(alias="days", fmt=fss.dt("%Y-%m-%d"), min=0)
 ```
 
-`fss.dt("%Y-%m-%d")` → `"{ts:%Y-%m-%d}"`. Capture is `kwargs["ts"]`.
+`fss.dt("%Y-%m-%d")` -> `"{ts:%Y-%m-%d}"`. Capture is `kwargs["ts"]`.
 `fss.dt("%Y-%m-%d", "day")` names that capture. `fss.dt("%Y-%m-%d", "")` stays positional.
 
 ### Inheritance and replacement
@@ -248,10 +248,10 @@ The mapping table above defines the valid `Layout` key-value pairings.
 ## Applying schemas
 
 `bind` checks the tree.
-Success → that Schema class. Failure → `MismatchErr`.
-Fixed `Dir(...): Child` → `Child`.
-Repeated `Dir(...): Batch` → each item is a `Batch` with captures.
-Exact `optional=True` → `None` if absent. Write after bind via `bound.root()`.
+Success -> that Schema class. Failure -> `MismatchErr`.
+Fixed `Dir(...): Child` -> `Child`.
+Repeated `Dir(...): Batch` -> each item is a `Batch` with captures.
+Exact `optional=True` -> `None` if absent. Write after bind via `bound.root()`.
 
 ```python
 result = Delivery.bind("/srv/incoming/delivery-42")
@@ -460,16 +460,16 @@ dynamic static lookup loses that precision.
 
 The filesystem:
 
-- `OSError` — the write failed
-- `FileNotFoundError` — the body is a path to copy, and that path is not there
+- `OSError` - the write failed
+- `FileNotFoundError` - the body is a path to copy, and that path is not there
 
 Bad arguments:
 
-- `KeyError` — that name is not a child
-- `TypeError` — the value has the wrong shape. One `(captures, payload)` pair was passed instead of a list. A collection was given one body. Captures are missing. Two names for the same child disagree.
-- `ValueError` — a filename does not match that child
-- `BeartypeCallHintParamViolation` — the value is the wrong Python type
-- `NotFoundLookupError` — a file was given a mapping
+- `KeyError` - that name is not a child
+- `TypeError` - the value has the wrong shape. One `(captures, payload)` pair was passed instead of a list. A collection was given one body. Captures are missing. Two names for the same child disagree.
+- `ValueError` - a filename does not match that child
+- `BeartypeCallHintParamViolation` - the value is the wrong Python type
+- `NotFoundLookupError` - a file was given a mapping
 
 </details>
 

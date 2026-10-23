@@ -29,19 +29,16 @@ ENV DEBIAN_FRONTEND=noninteractive \
     VIRTUAL_ENV="$VIRTUAL_ENV" \
     UV_PYTHON_INSTALL_DIR=/opt/uv-python
 ENV PATH="${VIRTUAL_ENV}/bin:/usr/local/bin:$PATH"
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
-    --mount=type=bind,source=versions/apt,target=/tmp/apt \
-  rm -f /etc/apt/apt.conf.d/docker-clean \
- && apt-get update \
- && xargs -a /tmp/apt apt-get install -y --no-install-recommends
 COPY --link --from=uv /uv /uvx /bin/
 WORKDIR /app
 # Pin files + run.sh only (not COPY): changing src does not bust this layer.
-RUN --mount=type=bind,source=run.sh,target=/opt/fs/run.sh \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    --mount=type=bind,source=run.sh,target=/opt/fs/run.sh \
     --mount=type=bind,source=versions,target=/opt/fs/versions \
     --mount=type=bind,source=.python-version,target=/opt/fs/.python-version \
-  bash /opt/fs/run.sh setup:check-image @@ setup:shellcheck
+  rm -f /etc/apt/apt.conf.d/docker-clean \
+ && bash /opt/fs/run.sh setup:apt @@ setup:check-image @@ setup:shellcheck
 ENTRYPOINT ["bash"]
 
 # Allowlist [project] name/version/requires-python/dependencies + dependency-groups

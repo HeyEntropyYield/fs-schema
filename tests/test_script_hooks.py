@@ -16,6 +16,43 @@ from scripts.release import ZERO_SHA, ReleaseError
 PROJECT_ROOT = Path(__file__).parents[1]
 
 
+def _git(root: Path, *args: str) -> None:
+    subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
+
+
+def test_ascii_rejects_a_non_ascii_line_and_accepts_the_tree(tmp_path: Path) -> None:
+    script_dir = tmp_path / "scripts"
+    script_dir.mkdir()
+    script = script_dir / "ascii.sh"
+    script.write_bytes((PROJECT_ROOT / "scripts/ascii.sh").read_bytes())
+    script.chmod(0o755)
+    (tmp_path / "note.md").write_text("caf\u00e9\n", encoding="utf-8")
+    (tmp_path / "Makefile").write_text("caf\u00e9\n", encoding="utf-8")
+    (tmp_path / "Dockerfile").write_text("ok\n", encoding="utf-8")
+    (tmp_path / "ok.txt").write_text("ok\n", encoding="utf-8")
+    (tmp_path / "bad.md").write_bytes(b"\xff")
+    (tmp_path / "nul.bin").write_bytes(b"a\0b")
+    (tmp_path / ".gitignore").write_text(".venv\n", encoding="utf-8")
+    ignored = tmp_path / ".venv"
+    ignored.mkdir()
+    (ignored / "secret.py").write_text("caf\u00e9\n", encoding="utf-8")
+    hidden = tmp_path / ".github" / "workflows"
+    hidden.mkdir(parents=True)
+    (hidden / "bad.yml").write_text("caf\u00e9\n", encoding="utf-8")
+    _git(tmp_path, "init", "-q")
+    result = subprocess.run([script], check=False, capture_output=True)
+    assert result.returncode == 1
+    found = result.stderr.decode("utf-8", "surrogateescape")
+    assert "note.md:1" in found
+    assert "Makefile:1" in found
+    assert "bad.md:1" in found
+    assert ".github/workflows/bad.yml:1" in found
+    assert not any(name in found for name in ("Dockerfile", "ok.txt", "nul.bin", ".venv"))
+    clean = subprocess.run([PROJECT_ROOT / "scripts/ascii.sh"], check=False, capture_output=True, text=True)
+    assert clean.returncode == 0
+    assert clean.stderr == ""
+
+
 def test_first_subject_skips_comments_and_trailers() -> None:
     assert first_subject("# comment\n\nCo-authored-by: A <a@b>\nv1.2\nbody\n") == "v1.2"
     assert first_subject("# only comments\n") == ""
@@ -37,7 +74,7 @@ def test_commit_msg_reports_empty_non_ascii_and_checker_error(tmp_path: Path) ->
     assert commit_msg_main([str(message)], stderr=stderr) == 1
     assert "empty commit subject" in stderr.getvalue()
 
-    message.write_text("café\n")
+    message.write_text("caf\u00e9\n")
     stderr = io.StringIO()
     assert commit_msg_main([str(message)], stderr=stderr) == 1
     assert "must be ASCII" in stderr.getvalue()

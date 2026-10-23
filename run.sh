@@ -86,6 +86,18 @@ setup:shellcheck(){
     | tar -xJ -C "$dest" --strip-components=1 --wildcards '*/shellcheck'
 }
 
+# @describe Install missing packages from versions/apt
+setup:apt(){
+  local pkg missing=() SUDO=()
+  while read -r pkg; do
+    [ -n "$pkg" ] || continue
+    dpkg-query -W "$pkg" >/dev/null 2>&1 || missing+=("$pkg")
+  done < "$ROOT_DIR/versions/apt"
+  [ "${#missing[@]}" -eq 0 ] && return 0
+  [ "$(id -u)" -eq 0 ] || SUDO=(sudo)
+  "${SUDO[@]}" apt-get update && "${SUDO[@]}" apt-get install -y --no-install-recommends "${missing[@]}"
+}
+
 # @describe Assert /etc/os-release and apt pkgs match pinned versions
 setup:check-image(){
   local got pkg
@@ -102,6 +114,7 @@ setup:check-installs(){
   local ret=0
   _has_cmd uv || ret=$?
   _has_cmd docker || ret=$?
+  _has_cmd rg || ret=$?
   _need_shellcheck || ret=$?
   command -v act >/dev/null || echo "act not on PATH (optional; ./run.sh ci:_act)"
   command -v gh >/dev/null || echo "gh not on PATH (optional; remote maintainer commands)"
@@ -128,12 +141,13 @@ uv:lock:bootstrap(){
 
 ## Dev: checks
 
-# @describe ruff check + shellcheck
+# @describe ruff check + shellcheck + ascii
 lint(){
   _need_venv || return $?
   ruff check src tests examples scripts "$@" || return $?
   _need_shellcheck || return $?
-  shellcheck -x "$ROOT_DIR/run.sh" "$ROOT_DIR/scripts/beartype" || return $?
+  shellcheck -x "$ROOT_DIR/run.sh" "$ROOT_DIR/scripts/beartype" "$ROOT_DIR/scripts/ascii.sh" || return $?
+  "$ROOT_DIR/scripts/ascii.sh" || return $?
 }
 
 # @describe basedpyright
@@ -307,7 +321,7 @@ release:_is-prerelease(){ _release is-prerelease; }
 
 # @describe Download from an index, clean-install, and exercise public API
 # @arg target[pypi|testpypi]!
-# Retries: TestPyPI simple index lags the upload API. 12 × 10s. `set +x` in
+# Retries: TestPyPI simple index lags the upload API. 12 x 10s. `set +x` in
 # `_publish_local` hides the loop unless we log attempts.
 release:_verify(){
   local attempt err=""
@@ -416,7 +430,7 @@ docker:build(){
 }
 
 # Host tree at /app. Image venv is /.venv; tmpfs hides host .venv.
-# DOCKER_IT=1 → -it (docker:shell).
+# DOCKER_IT=1 -> -it (docker:shell).
 docker:_run(){
   local img extra=() stage=$1
   shift

@@ -1,7 +1,7 @@
 # Migrate a delivery pipeline from paths to states
 
 A delivery pipeline is a sequence of filesystem states, even when its code says
-only `Path`. This tutorial migrates a download → validation → curation →
+only `Path`. This tutorial migrates a download -> validation -> curation ->
 warehouse-load pipeline so that every function accepts the state it really
 requires.
 
