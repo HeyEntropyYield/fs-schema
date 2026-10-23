@@ -1,4 +1,4 @@
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from decimal import Decimal
@@ -43,20 +43,30 @@ class _Parsed:
 
 
 class Spec:
-    __slots__: Final = ("_parser",)
+    __slots__: Final = ("_kinds", "_parser")
+    _kinds: dict[str, type[FmtFieldT]]
     _parser: Parser
 
     def __init__(self, pattern: Raw[FmtStr]) -> None:
         """Exception: raises on unsupported type"""
         self._parser = Parser(pattern, case_sensitive=True)
-        for sample in _samples(self._parser):
-            _ = value_exn(sample)  # unsupported type
+        self._kinds = _field_kinds_exn(self._parser)  # unsupported type
+
+    @property
+    def field_type(self) -> Mapping[str, type[FmtFieldT]]:
+        return self._kinds
 
     def parse(self, text: Safe[Name]) -> _Parsed | None:
         """Exception: raises on unsupported type"""
         if not (result := _parselib_parse(self._parser, text)):
             return None
         return _Parsed.from_result_exn(result)
+
+
+def spec_type_exn(spec: str) -> type[FmtFieldT]:
+    # <name:spec>. One field, named x
+    pattern = Raw[FmtStr]("{x}" if not spec else "{x:" + spec + "}")
+    return Spec(pattern).field_type["x"]  # unsupported type
 
 
 def value_exn(parsed: _Field) -> FmtFieldT:
@@ -93,15 +103,19 @@ _LIB: Final = cast(_Converters, parse_lib)  # pyright: ignore[reportInvalidCast]
 _DATE_CONVERT_DATETIME: Final = ("ymd", "mdy", "dmy", "d_m_y", "mm")
 
 
-def _samples(parser: Parser) -> Iterator[_Field]:
-    # Parser records each converted field here. No public result type
+def _field_kinds_exn(parser: Parser) -> dict[str, type[FmtFieldT]]:
+    # _sample_exn returns a value. type() of that value is the kind. No converter means str
+    names = cast(Mapping[str, str], parser._name_types)  # pyright: ignore[reportAttributeAccessIssue]  # field_name -> field_spec
+    groups = cast(Mapping[str, str], parser._name_to_group_map)  # pyright: ignore[reportAttributeAccessIssue]  # field_name -> group
     conversions = cast(Mapping[object, object], parser._type_conversions)  # pyright: ignore[reportAttributeAccessIssue]
-    for converter in conversions.values():
-        yield _sample(converter)
+    kinds: dict[str, type[FmtFieldT]] = {}
+    for name in names:
+        converter = conversions.get(groups[name])
+        kinds[name] = str if converter is None else type(value_exn(_sample_exn(converter)))
+    return kinds
 
 
-def _sample(converter: object) -> _Field:
-    """Exception: raises on unsupported type"""
+def _sample_exn(converter: object) -> _Field:
     match converter:
         case _LIB.int_convert() | _LIB.convert_first():
             return _call(converter, "1")

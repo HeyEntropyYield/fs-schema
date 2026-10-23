@@ -239,7 +239,15 @@ def test_formatted_file_collections_take_a_body(tmp_path: Path) -> None:
         _Shelf
         .relative_to(tmp_path)
         .create(
-            days=[({"day": when}, {"note": row, "extra": {"readme": "#\n", "body": row}})],
+            days=[
+                (
+                    {"day": when},
+                    {
+                        "note": [({"day": when}, row)],
+                        "extra": {"readme": "#\n", "body": [({"day": when}, row)]},
+                    },
+                )
+            ],
             ranked=[({"label": "alpha", "n": 1}, b"rank")],
         )
         .bind()
@@ -251,14 +259,13 @@ def test_formatted_file_collections_take_a_body(tmp_path: Path) -> None:
     assert bound.ranked[0].read_bytes() == b"rank"
 
     planned = _Shelf.relative_to(tmp_path / "again")
-    planned.days.format(day=when).create(extra={"body": row})
+    planned.days.format(day=when).create(extra={"body": [({"day": when}, row)]})
     assert (tmp_path / "again" / "2026-09-17" / "extra" / "2026-09-17.txt").read_text() == row
 
-    with pytest.raises(ValueError, match=re.escape(em.Fmt.capture("day"))):
-        _Shelf.relative_to(tmp_path / "clash").create(
-            days=[({"day": when}, {"note": [({"day": datetime(2026, 9, 18)}, row)]})]
-        )
-    with pytest.raises(TypeError, match=re.escape(em.Create.file("files", ["label"], ["n"]))):
+    later = datetime(2026, 9, 18)
+    _Shelf.relative_to(tmp_path / "clash").create(days=[({"day": when}, {"note": [({"day": later}, row)]})])
+    assert (tmp_path / "clash" / "2026-09-17" / "2026-09-18.txt").read_text() == row
+    with pytest.raises(TypeError, match=re.escape(em.Create.file("files", ["label", "n"], []))):
         _Groups.relative_to(tmp_path / "partial").create(groups=[({"n": 1}, {"files": b"rank"})])
     with pytest.raises(ValueError, match=re.escape(em.Create.FILENAMES)):
         _Shelf.relative_to(tmp_path / "names").create(days={"day": {}})
@@ -273,17 +280,34 @@ def test_capture_disagreement_and_missing_names(tmp_path: Path) -> None:
     same.create(days=[({"day": when}, {"note": [({"day": when}, row)]})])
     assert (tmp_path / "same" / "2026-09-17" / "2026-09-17.txt").read_text() == row
 
-    with pytest.raises(ValueError, match=re.escape(em.Fmt.capture("day"))):
-        _Shelf.relative_to(tmp_path / "clash").create(days=[({"day": when}, {"note": [({"day": later}, row)]})])
+    _Shelf.relative_to(tmp_path / "clash").create(days=[({"day": when}, {"note": [({"day": later}, row)]})])
+    assert (tmp_path / "clash" / "2026-09-17" / "2026-09-18.txt").read_text() == row
 
     with pytest.raises(TypeError, match=re.escape(em.Create.file("ranked", ["label", "n"], []))):
         _Shelf.relative_to(tmp_path / "open").create(ranked=b"rank")
 
-    with pytest.raises(TypeError, match=re.escape(em.Create.file("files", ["label"], ["n"]))):
+    with pytest.raises(TypeError, match=re.escape(em.Create.file("files", ["label", "n"], []))):
         _Groups.relative_to(tmp_path / "partial").create(groups=[({"n": 1}, {"files": b"rank"})])
 
     with pytest.raises(ValueError, match=re.escape(em.Create.FILENAMES)):
         _Shelf.relative_to(tmp_path / "names").create(days={"day": {}})
+
+    src = tmp_path / "rank-src"
+    src.write_bytes(b"rank")
+    filled = _Shelf.relative_to(tmp_path / "filled")
+    filled.ranked.fmt_fields.update({"label": "alpha", "n": 1})
+    filled.create(ranked=_Fspath(str(src)))
+    assert (tmp_path / "filled" / "alpha_1.txt").read_bytes() == b"rank"
+
+    partial = _Shelf.relative_to(tmp_path / "partial-fields")
+    partial.ranked.fmt_fields["n"] = 1
+    with pytest.raises(TypeError, match=re.escape(em.Create.file("ranked", ["label"], ["n"]))):
+        partial.create(ranked=b"rank")
+
+    disagreed = _Shelf.relative_to(tmp_path / "disagree")
+    disagreed.ranked.fmt_fields["n"] = 1
+    with pytest.raises(ValueError, match=re.escape(em.Fmt.capture("n"))):
+        disagreed.ranked.format(label="alpha", n=2)
 
     for body in ("nope", b"nope", tmp_path):
         with pytest.raises(TypeError, match=re.escape(em.Create.collection("days"))):
@@ -294,9 +318,14 @@ def test_collection_create_pathlike_and_unformatted(tmp_path: Path) -> None:
     when = datetime(2026, 9, 17)
     source = tmp_path / "src.txt"
     _ = source.write_text("copied")
-    _ = _Shelf.relative_to(tmp_path / "copied").days.format(day=when).create(extra={"body": _Fspath(str(source))})
+    _ = (
+        _Shelf
+        .relative_to(tmp_path / "copied")
+        .days.format(day=when)
+        .create(extra={"body": [({"day": when}, _Fspath(str(source)))]})
+    )
     assert (tmp_path / "copied" / "2026-09-17" / "extra" / "2026-09-17.txt").read_text() == "copied"
-    with pytest.raises(TypeError, match=re.escape(em.Create.file("files", ["label"], ["n"]))):
+    with pytest.raises(TypeError, match=re.escape(em.Create.file("files", ["label", "n"], []))):
         _Groups.relative_to(tmp_path / "pathlike").groups.format(n=1).create(files=_Fspath("unused"))
     with pytest.raises(TypeError, match=re.escape(em.Create.names("images"))):
         _MatchPics.relative_to(tmp_path / "pairs").create(images=[(captures(part=0), b"png")])

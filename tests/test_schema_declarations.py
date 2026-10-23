@@ -1,13 +1,14 @@
 # pyright: reportPrivateUsage=false
 import re
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from beartype.roar import BeartypeCallHintParamViolation
 from pytest_params import params  # pyright: ignore[reportUnknownVariableType]
 
 import fs_schema
-from fs_schema import MismatchErr, _decl, _fmt, _schema, _types
+from fs_schema import MismatchErr, _compile, _decl, _fmt, _schema, _types
 from fs_schema import _errmsg as em
 
 
@@ -196,3 +197,18 @@ def test_exact_name_rejects_collection_only_flags() -> None:
 def test_collection_rejects_optional_flag() -> None:
     with pytest.raises(ValueError, match=re.escape(em.Node.OPTIONAL)):
         _decl.File(fmt="{value}", optional=True)  # pyright: ignore[reportCallIssue]
+
+
+def test_a_name_that_will_not_fold_is_a_basename_error() -> None:
+    class Note(_schema.Schema):
+        schema = {"note": "note.txt"}
+
+    with (
+        patch.object(_decl, "normalize_name", return_value=None),
+        pytest.raises(ValueError, match=re.escape(em.Fmt.basename("note.txt"))),
+    ):
+        _decl._dir_defn_ctor_uniq_lookups_exn((_decl.File("note.txt"),))
+    with patch.object(_compile, "normalize_name", return_value=None):
+        error = _compile.schema_ctor_check_defn_shadows(Note)
+    assert isinstance(error, ValueError)
+    assert str(error) == em.Fmt.basename("note.txt")

@@ -37,12 +37,12 @@ from ._decl import (
     Node,
     OneDefn,
     Xor,
+    capture_names,
     child_attr,
     defn_node,
     is_union,
     normalize_name,
     unnamed_clashes,
-    validate_capture_names_exn,
 )
 from ._fmt import (
     CaptureField,
@@ -64,6 +64,7 @@ from ._types import (
     FmtStr,
     MatchPat,
     Name,
+    Open,
     PathIsh,
     Puttable,
     Raw,
@@ -133,7 +134,7 @@ class _Fixed:
 
     @property
     def name(self) -> Safe[Name]:
-        return path_name_exn(self.path)
+        return path_name_exn(self.path)  # caller error
 
     @property
     def stem(self) -> str:
@@ -158,15 +159,23 @@ class _Fixed:
 
 class FixedFile(_Fixed, Generic[_L_co]):
     alias: ClassVar[str | None]
-    fmt: ClassVar[Safe[FmtStr] | None]
+    fmt: ClassVar[Open[FmtStr] | None]
     match: ClassVar[Raw[MatchPat] | None]
     min: ClassVar[int]
     max: ClassVar[int | None]
     defn: File[_L_co]
+    _scope: CaptureMap | None
 
-    def __init__(self, path: PathIsh, defn: File[_L_co]) -> None:
+    def __init__(self, path: PathIsh, defn: File[_L_co], *, scope: CaptureMap | None = None) -> None:
         _Fixed.__init__(self, path)
         self.defn = defn
+        self._scope = scope
+
+    def __getattr__(self, name: str) -> CaptureMap:
+        # Present only when an ancestor frame resolved this name
+        if name == "kwargs" and self._scope is not None:
+            return self._scope
+        raise AttributeError(name)
 
     def read_bytes(self) -> bytes:
         return self.path.read_bytes()
@@ -222,7 +231,7 @@ class FileMatch(_CaptureState, FixedFile[_L_co], Generic[_L_co]):
 
 class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
     alias: ClassVar[str | None]
-    fmt: ClassVar[Safe[FmtStr] | None]
+    fmt: ClassVar[Open[FmtStr] | None]
     match: ClassVar[Raw[MatchPat] | None]
     min: ClassVar[int]
     max: ClassVar[int | None]
@@ -230,6 +239,7 @@ class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
     _matches: tuple[_M_co, ...]
     defn: _Defn_co
     fmt_fields: FmtFields
+    scope: CaptureMap | None
 
     def __init__(
         self,
@@ -237,11 +247,15 @@ class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
         matches: Sequence[_M_co],
         defn: _Defn_co,
         fmt_fields: FmtFields | None = None,
+        *,
+        scope: CaptureMap | None = None,
     ) -> None:
         self.path = safe_path_exn(Path(path))  # caller error
         self._matches = tuple(matches)
         self.defn = defn
         self.fmt_fields = dict(fmt_fields or {})
+        # where() walks this frame. A slice is a new collection, so the frame is an argument
+        self.scope = scope
 
     @overload
     def __getitem__(self, index: int) -> _M_co: ...
@@ -252,7 +266,7 @@ class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
     @override
     def __getitem__(self, index: int | slice) -> _M_co | Self:
         if isinstance(index, slice):
-            return type(self)(self.path, self._matches[index], self.defn, self.fmt_fields)
+            return type(self)(self.path, self._matches[index], self.defn, self.fmt_fields, scope=self.scope)
         return self._matches[index]
 
     @override
@@ -265,6 +279,7 @@ class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
             tuple(match for match in self._matches if predicate(match.args, match.kwargs)),
             self.defn,
             self.fmt_fields,
+            scope=self.scope,
         )
 
     def find(self, predicate: CapturePredicate, /) -> _M_co | None:
@@ -272,7 +287,10 @@ class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
 
     def where(self, *args: CaptureField, **kwargs: CaptureField) -> Self:
         """Exception: raises to support chaining"""
-        validate_capture_names_exn(self.defn, kwargs)  # chaining
+        names = capture_names(self.defn)
+        for name in kwargs:
+            if name not in names and (self.scope is None or name not in self.scope):
+                raise KeyError(name)
         return self.filter(
             lambda captured_args, captured_kwargs: _matches_where_captures(captured_args, captured_kwargs, args, kwargs)
         )
@@ -314,7 +332,7 @@ class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
         basename = Path(source).name
         if not (name := safe(Raw[Name](basename))) or defn_node(self.defn).select(name) is None:
             raise ValueError(em.Parse.member(basename))
-        return plan_fixed_exn(child_path_exn(self.path, name), self.defn)
+        return plan_fixed_exn(child_path_exn(self.path, name), self.defn)  # chaining
 
 
 def _matches_where_captures(
@@ -444,7 +462,7 @@ else:
 
 class FixedDir(_Fixed):
     alias: ClassVar[str | None]
-    fmt: ClassVar[Safe[FmtStr] | None]
+    fmt: ClassVar[Open[FmtStr] | None]
     match: ClassVar[Raw[MatchPat] | None]
     min: ClassVar[int]
     max: ClassVar[int | None]
@@ -523,15 +541,15 @@ class XorDir(_Fixed):
     _arms: tuple[FixedDir, ...]
     _clashes: frozenset[str]
 
-    def __init__(self, path: PathIsh, defn: DirDefn) -> None:
-        from ._plan import plan_layout_children_exn
+    def __init__(self, path: PathIsh, defn: DirDefn, scope: CaptureMap | None = None) -> None:
+        from ._plan import layout_scope, plan_layout_children_exn
 
         _Fixed.__init__(self, path)
         self.defn = defn
         self._clashes = unnamed_clashes(defn.layouts)
         self._arms = tuple(FixedDir(
             self.path,
-            plan_layout_children_exn(self.path, layout),  # caller error
+            plan_layout_children_exn(self.path, layout, layout_scope(layout, scope)),  # caller error
             OneDefn(defn.defn, layout),
         ) for layout in defn.layouts)  # fmt: skip
 
@@ -700,7 +718,7 @@ class Schema(FixedDir, metaclass=SchemaCls):
 
         path = safe_path_exn(Path(root))  # caller error
         body = cls._schema_defn
-        return _root_type_for(cls)(path, plan_layout_children_exn(path, body), _root_bound(body))
+        return _root_type_for(cls)(path, plan_layout_children_exn(path, body), _root_bound(body))  # caller error
 
     @classmethod
     def bind(cls: type[_S], root: PathIsh, *, fast: bool = False) -> "_S | MismatchErr":
@@ -721,7 +739,7 @@ def _schema_ctor_child_names(node: Node) -> tuple[str, ...]:
     names: list[str] = []
     if node.alias:
         names.append(node.alias)
-    if node.name and (normalized := normalize_name(node.name)) not in names:
+    if node.name and (normalized := normalize_name(node.name)) and normalized not in names:
         names.append(normalized)
     return tuple(names)
 

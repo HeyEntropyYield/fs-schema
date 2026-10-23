@@ -19,9 +19,9 @@ def _compile(pattern: str) -> _fmt.CompiledFormat:
 
 
 def _name(text: str) -> _types.Safe[_types.Name]:
-    proved = _fmt.safe(_types.Raw[_types.Name](text))
-    assert proved is not None
-    return proved
+    safe_name = _fmt.safe(_types.Raw[_types.Name](text))
+    assert safe_name is not None
+    return safe_name
 
 
 def test_capture_map_supports_keys_attributes_and_mapping_collisions() -> None:
@@ -34,6 +34,11 @@ def test_capture_map_supports_keys_attributes_and_mapping_collisions() -> None:
         _ = captures["missing"]
     with pytest.raises(AttributeError, match="missing"):
         _ = captures.missing
+    absent = _fmt.CaptureMap({"part": None})
+    with pytest.raises(KeyError, match="missing"):
+        absent.render_exn("missing")
+    with pytest.raises(TypeError, match=re.escape(em.Schema.Body.unbound("part"))):
+        absent.render_exn("part")
 
 
 def test_compiled_format_round_trips_named_string_and_integer_fields() -> None:
@@ -47,7 +52,7 @@ def test_compiled_format_round_trips_named_string_and_integer_fields() -> None:
     assert all(not field.positional for field in compiled.fields)
     basename = compiled.format(part=2, label="ready")
     assert basename == "part-2-ready.json"
-    parsed = compiled.parse(_fmt.safe_exn(basename))
+    parsed = compiled.parse(_name(basename))
     assert isinstance(parsed, _fmt.ParsedCaptures)
     assert parsed.args == ()
     assert type(parsed.kwargs) is _fmt.CaptureMap
@@ -63,7 +68,7 @@ def test_compiled_format_round_trips_auto_and_numbered_positional_fields() -> No
     assert all(field.positional for field in automatic.fields)
     basename = automatic.format("name", 3)
     assert basename == "name-3"
-    parsed = automatic.parse(_fmt.safe_exn(basename))
+    parsed = automatic.parse(_name(basename))
     assert parsed is not None
     assert parsed.args == ("name", 3)
     assert parsed.kwargs == {}
@@ -83,7 +88,7 @@ def test_datetime_formats_round_trip_named_and_public_dt_fields() -> None:
     assert type(named.fields[0]) is _fmt.FormatField
     basename = named.format(moment=moment)
     assert basename == "run-20260914-1951"
-    parsed = named.parse(_fmt.safe_exn(basename))
+    parsed = named.parse(_name(basename))
     assert parsed is not None
     assert parsed.kwargs == {"moment": moment}
 
@@ -145,9 +150,9 @@ def test_unknown_converter_is_rejected() -> None:
     def odd(_text: str, _match: object) -> str: ...
 
     with pytest.raises(TypeError, match=em.Fmt.value("function")):
-        _fmt_spec._sample(partial(odd))
+        _fmt_spec._sample_exn(partial(odd))
     with pytest.raises(TypeError, match=em.Fmt.value("object")):
-        _fmt_spec._sample(object())
+        _fmt_spec._sample_exn(object())
 
 
 def test_named_date_spec_parses_datetime() -> None:
@@ -170,6 +175,23 @@ def test_format_types_are_exact_and_atomic_inputs_are_beartyped() -> None:
         _compile("{value}").format(value=1.5)  # pyright: ignore[reportArgumentType]
     with pytest.raises(BeartypeCallHintParamViolation):
         _compile("{value}").format(value=None)  # pyright: ignore[reportArgumentType]
+
+
+def test_refs_preview_and_escape_before_the_basename_check() -> None:
+    assert _fmt.close_exn(_types.Raw[_types.Name]("plain.txt"), None) == "plain.txt"
+    assert _fmt.close_exn(_types.Raw[_types.Name]("a/<b>.txt"), None) == "a<b>.txt"
+    assert _fmt.safe(_types.Raw[_types.Name]("a/<b>.txt")) == "a<b>.txt"
+    assert _fmt.safe(_types.Raw[_types.Name]("a<b>.txt")) is None
+    assert _fmt.safe(_types.Raw[_types.Name]("<ts>.log")) is None
+    opened = _fmt.open_str(_types.Raw[_types.Name]("a/<b>_<ts:%Y%m%d>.txt"))
+    assert opened == "a/<b>_<ts:%Y%m%d>.txt"
+    assert isinstance(opened, _types.Open) and not isinstance(opened, _types.Safe)
+    assert _fmt.safe(_types.Raw[_types.Name]("a/b.txt")) is None
+    _compile("a/<{n}")
+    with pytest.raises(ValueError, match=re.escape(em.Fmt.literal("a\\b{n}"))):
+        _compile("a\\b{n}")
+    with pytest.raises(ValueError, match=re.escape(em.Schema.Body.unbound("ts"))):
+        _fmt.close_exn(_types.Raw[_types.Name]("<ts>.log"), None)
 
 
 @params(("pattern", "message"), [
@@ -199,3 +221,74 @@ def test_safe_path_accepts_an_anchor_and_rejects_a_bad_component() -> None:
     assert _fmt.path_name_exn(root) == ""
     with pytest.raises(ValueError, match=re.escape(em.Fmt.basename("a/../b"))):
         _fmt.safe_path_exn(Path("a/../b"))
+
+
+def test_filesystem_root_has_no_component_and_dot_paths_fail() -> None:
+    root = _fmt.safe_path_exn(Path("/"))
+    name = _fmt.path_name_exn(root)
+    assert name == ""
+    assert isinstance(name, _types.Safe)
+    assert isinstance(name, _types.Open) and isinstance(name, _types.Resolved)
+    assert _fmt.child_path_exn(root, name) == root
+    assert _fmt.child_path_exn(root, _types.Safe[_types.Name](".")) == root
+    assert _fmt.child_path_exn(root, _name("etc")) == Path("/etc")
+    assert _fmt.path_name_exn(_fmt.safe_path_exn(Path("/etc"))) == "etc"
+    assert _fmt.safe_path_exn(Path("/.")) == Path("/")
+    assert _fmt.safe_path_exn(Path("//")) == Path("//")
+    assert _fmt.path_name_exn(_fmt.safe_path_exn(Path("//"))) == ""
+    assert _fmt.safe_path_exn(Path("///")) == Path("/")
+    assert _fmt.child_path_exn(_fmt.safe_path_exn(Path("//")), _name("etc")) == Path("//") / "etc"
+    relative = _fmt.safe_path_exn(Path("foo/bar"))
+    assert relative.name == "bar" and _fmt.path_name_exn(relative) == "bar"
+    assert _fmt.safe(_types.Raw[_types.Name]("")) is None
+    assert _fmt.safe(_types.Raw[_types.Name](".")) is None
+    assert _fmt.safe(_types.Raw[_types.Name]("..")) is None
+    assert _fmt.safe(_types.Safe[_types.Name]("")) == ""
+    assert _fmt.safe(_types.Safe[_types.Name](".")) == "."
+    for text in (".", "", "..", "/..", "/foo/..", "foo/../bar", "a\\b", "a\0b"):
+        with pytest.raises(ValueError, match=re.escape(em.Fmt.basename(Path(text).as_posix()))):
+            _fmt.safe_path_exn(Path(text))
+
+
+def test_format_spec_cannot_contain_a_capture() -> None:
+    with pytest.raises(ValueError, match=re.escape(em.Fmt.spec("<ts>"))):
+        _compile("{n:<ts>}")
+    with pytest.raises(ValueError, match=re.escape(em.Fmt.spec("a<b"))):
+        _compile("{n:a<b}")
+    with pytest.raises(ValueError, match=re.escape("format spec '/' not recognised")):
+        _compile("{n:/}")
+    with pytest.raises(ValueError, match="format spec"):
+        _compile("{n:\\}")
+    dotted = _compile(".{n}")
+    assert [(field.field_name, field.field_spec) for field in dotted.fields] == [("n", "")]
+    empty_spec = _compile("{n:}")
+    assert [(field.field_name, field.field_spec) for field in empty_spec.fields] == [("n", "")]
+    compiled = _compile("file_<ts>_{n:d}.txt")
+    assert [(field.field_name, field.field_spec) for field in compiled.fields] == [("n", "d")]
+    assert isinstance(compiled.pattern, _types.Open)
+    assert not isinstance(compiled.pattern, _types.Safe)
+    assert _fmt.valid_fmt_exn("") is None
+    assert _fmt.valid_fmt_exn(None) is None
+
+
+def test_ref_stand_in_and_filled_text_must_be_one_component() -> None:
+    assert _fmt.open_str(_types.Raw[_types.Name]("<a>/b.txt")) is None
+    assert _fmt.open_str(_types.Raw[_types.Name]("<a>\\b")) is None
+    assert _fmt.open_str(_types.Raw[_types.Name]("<a>\0b")) is None
+    escaped = _fmt.open_str(_types.Raw[_types.Name]("../<a>"))
+    assert escaped == "..<a>"
+    assert isinstance(escaped, _types.Safe)
+    assert _fmt._safe_ish(_types.Raw[_types.Name]("")) is None
+    kept = _types.Safe[_types.Name]("")
+    assert _fmt._resolve(kept) == ""
+    assert _fmt._safe(kept) == ""
+    with pytest.raises(ValueError, match=re.escape(em.Fmt.basename("a/b"))):
+        _fmt.close_exn(_types.Raw[_types.Name]("<n>"), _fmt.CaptureMap({"n": "a/b"}))
+    with pytest.raises(ValueError, match=re.escape(em.Fmt.basename("a<b>"))):
+        _fmt.close_exn(_types.Raw[_types.Name]("<n>"), _fmt.CaptureMap({"n": "a<b>"}))
+    with pytest.raises(ValueError, match=re.escape(em.Fmt.basename(""))):
+        _fmt.close_exn(_types.Raw[_types.Name]("<n>"), _fmt.CaptureMap({"n": ""}))
+    with pytest.raises(ValueError, match=re.escape(em.Fmt.basename(".."))):
+        _fmt.close_exn(_types.Raw[_types.Name]("<n>"), _fmt.CaptureMap({"n": ".."}))
+    with pytest.raises(ValueError, match=re.escape(em.Fmt.basename("."))):
+        _fmt.close_exn(_types.Raw[_types.Name]("<n>"), _fmt.CaptureMap({"n": "."}))

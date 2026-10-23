@@ -266,7 +266,7 @@ def curate(
     return fs.bind()
 ```
 
-The list is the whole write. Each pair is one member: the captures, then the body that member would take. `part` is not the same capture as `day`, so the inner file still needs its own pair. A capture that an enclosing `format` already supplied is just the body. `bind()` checks the tree you wrote.
+The list is the whole write. Each pair is one member: the captures, then the body that member would take. `part` is not the same capture as `day`, so the inner file still needs its own pair. A `<name>` reads an ancestor in that declaration and is not an argument. `bind()` checks the tree you wrote.
 
 ## Record loaded state and design retries first
 

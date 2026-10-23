@@ -7,6 +7,7 @@ import pytest
 import data_delivery_after
 import data_delivery_before
 import fs_schema as fss
+import parent_capture
 import quickstart
 import smoke
 import symlink_copy
@@ -21,6 +22,7 @@ def test_examples_import(tmp_path: Path) -> None:
     smoke.main()
     symlink_copy.main()
     xor_directory.main()
+    parent_capture.main()
 
 
 def _stage_download(target: Path, *, parts: int, expected: int) -> None:

@@ -4,6 +4,10 @@ API by git tag. Signatures: [reference](https://heyentropyyield.github.io/fs-sch
 
 ## Unreleased
 
+`<name>` is an ancestor capture in the same declaration. A nested dict sees it. A named class does not. `/<` is a literal `<`.
+[Ancestor captures](https://heyentropyyield.github.io/fs-schema/reference/#ancestor-captures)
+[example](https://github.com/heyentropyyield/fs-schema/blob/master/examples/parent_capture.py)
+
 `xor(...)` is an exclusive union. One branch binds, first success.
 Unnamed branches promote their children onto the xor. A keyword keeps them behind that branch.
 Create through a child or a branch. Bind returns the winning schema.

@@ -194,7 +194,7 @@ Collection (`fmt` and/or `match`, no `name`):
 ```text
 File(
     *,
-    fmt: FmtLike,
+    fmt: str,
     match: str | None = None,
     min: int = 1,
     max: int | None = None,
@@ -207,7 +207,7 @@ File(
 
 Dir(
     *,
-    fmt: FmtLike,
+    fmt: str,
     match: str | None = None,
     min: int = 1,
     max: int | None = None,
@@ -240,7 +240,7 @@ node.with_(**changes) -> Self
 ```
 
 ```text
-dt(pattern: str) -> FmtLike
+dt(pattern: str, name: str = "ts") -> str
 ```
 
 The mapping table above defines the valid `Layout` key-value pairings.
@@ -366,21 +366,19 @@ lookup for names such as `"items"` that collide with mapping methods.
 | `format(*args, **kwargs)` | Planned fixed file or recursively navigable fixed directory (format-backed collections only) |
 | `parse(source)` | Planned member named by `Path(source).name`. `source` may be a basename, a path, or any `__fspath__` value |
 
-A predicate receives the pair `(match.args, match.kwargs)`. Filtering returns a
-materialized result that keeps collection capabilities such as slicing and, for
-format-backed collections, `format()`. Empty results are collections too.
+```python
+days.where(day=datetime(2026, 9, 10))  # every named constraint
+days.where(day=None)  # None matches an optional capture
+days.where(None, 1)  # None wildcards that position; extra positions drop the match
+days.where()  # same collection
+days.where(no_such=1)  # KeyError, even on an empty plan
+kept = days.filter(lambda args, kwargs: kwargs["day"] == datetime(2026, 9, 10))  # still a collection; empty stays one
+days.get()  # first match, or None
+days.get(-1, default=latest_day)  # negative index; that default, including None
+_ = days[9]  # IndexError
+```
 
-`where` combines all supplied constraints. Positional values match a capture
-prefix, with `None` acting as a wildcard for that position; named values match a
-subset, where `None` matches an optional capture value. Unknown named capture
-fields raise `KeyError`, even on an empty planned collection. More positional
-values than a match has simply reject that match. Calling `where()` without
-constraints returns an equivalent collection.
-
-`get` accepts positive and negative indexes. With no explicit default, an
-out-of-range index returns `None`; an explicit `None` or other default is
-returned unchanged. Other errors are not hidden. This makes one-result queries
-concise without changing ordinary sequence indexing.
+`days.where(ts=when)` keeps every sibling or none when `ts` is an ancestor in scope.
 
 ```python
 def is_selected_day(args, kwargs):
@@ -442,16 +440,13 @@ shown above.
 
 ### Static typing of dynamic children
 
-Dynamically resolved class children use the bare `type` boundary. This is broad
-enough for direct recursive navigation such as `Root.inline.leaf`, but it cannot
-preserve whether each dynamically named child is a file class, collection class,
-or exact generated `Schema` subtype. Instance child access likewise returns a
-union of possible child kinds. `Delivery.RootT` remains
-`type[SchemaRoot[Schema]]`.
+```python
+annotated: fss.SchemaRoot[Delivery] = Delivery.relative_to("/srv/incoming/delivery-42")
+_ = Delivery.RootT  # type[SchemaRoot[Schema]]; a dynamic child is bare type
+_ = annotated.batches.days  # navigates; the static type is not the exact collection class
+```
 
-Use an explicit `fss.SchemaRoot[Delivery]` annotation when the schema parameter
-must remain exact. Fixed Schema-backed values retain their exact classes; only
-dynamic static lookup loses that precision.
+A fixed child keeps its class. A dynamic name does not. Instance access is a union of those child kinds.
 
 ## Creating with schemas
 
@@ -477,25 +472,6 @@ Bad arguments:
 
 </details>
 
-A file argument is whatever `put` accepts. A directory argument names child aliases. Leave an optional child out, or pass `None`, and it stays absent. An unknown alias raises `KeyError`. `create()` with no arguments creates that directory and every required child directory. It does not write files, and it does not create optional directories or collection members.
-
-You do not `create` a collection as a whole.
-`format(**captures)` names one member. That is the ordinary write.
-`create` on that member writes it.
-If that member is a directory, every template under it remembers the captures.
-`parse(source)` names one member from a basename, a path, or another schema node.
-A basename that does not fit raises `ValueError` there, not later at `bind`.
-A path-like body is copied.
-A string body is text, even when it names a file that exists.
-
-A list of `(captures, payload)` pairs is the bulk form, for many members in one `create`.
-The left side is `captures(*args, **kwargs)`, or a dict of names. A dict is turned into `captures` before the write.
-`captures(part=0)` and `{"part": 0}` are the same named field. `captures(0)` fills `{}` or `{0}`. It does not fill `{part}`.
-The payload is what you would pass to `create` on that member.
-A mapping of filename to body writes those names as given. The keys are filenames. If a key is a capture name instead of a filename, the error says so.
-
-If a file collection's captures were all remembered by an enclosing `format`, pass the file body by itself. A directory collection does not do that, because a mapping there already means filenames. A bare body that is still missing a capture raises `TypeError` and names the missing one. Two different values for the same capture raise `ValueError`.
-
 ```python
 fs: fss.SchemaRoot[Delivery] = Delivery.relative_to("/srv/curated/delivery-42")
 event_date = datetime(2026, 9, 10)
@@ -508,14 +484,25 @@ fs.create(
         {"parts": [(fss.captures(part=0), parquet_bytes)]},  # same slot via captures
     )]},
 )
-another = fs.batches.days.format(day=datetime(2026, 9, 11))
-another.parts.format(part=0).create(b"next")
+another = fs.batches.days.format(day=datetime(2026, 9, 11))  # templates under that day remember day
+another.parts.format(part=0).create(b"next")  # captures already set, so the body is the only argument
 created = fs.bind()
+fs.manifest.create("notes.txt")  # the file contains the text notes.txt
+fs.manifest.create(Path("notes.txt"))  # a path is copied
+fs.manifest.create()  # empty file
+fs.create()  # required child directories; no files, no optional, no members
+fs.create(manifest=None)  # omitted or None stays absent
+fs.batches.days.parse("nope")  # a basename that does not fit is ValueError here
+fs.batches.days.create([(fss.captures(0), b"x")])  # captures(0) fills {} or {0}, not {part}
 ```
 
-`create` on a bound schema raises `TypeError`. Call `root()` and write on the plan. A bound file can still `create`; that is `put`.
+```python
+delivery.create()  # TypeError; a bound file's create is put
+plan = delivery.root()  # fresh unchecked plan; keep it if you write a child and then bind
+plan.bind()
+```
 
-`bind()` returns the schema when the tree matches, and `MismatchErr` when it does not. `root()` starts a fresh plan at the same path. That plan has not been checked. `bind()` lives on the plan from `relative_to` or `root()`. Keep that plan if you will bind after writing a child.
+`{"2026-09-10": b"..."}` keys are filenames. A capture name there says so. A directory mapping is child names, so it does not take that bare body. A missing `{name}` is `TypeError` and names it. Two values for one capture is `ValueError`.
 
 ```python
 fs: fss.SchemaRoot[Delivery] = delivery.root()
@@ -547,22 +534,23 @@ custom_manifest = fss.File(
 )
 ```
 
-`put` writes one file and creates any missing parent directories.
-The new contents replace the old file in one step, so a reader sees either the old file or the new one.
-Pass `None`, or omit the body, and the file is empty.
-The body can be bytes, text, a path to copy, a schema node to copy, an object with `save`, or a dataclass stored as JSON.
-A string is always text.
-`Path("notes.txt")` copies that file.
-The string `"notes.txt"` writes the text `notes.txt`, even when `notes.txt` exists in the same directory.
-`save` is called on a file that then becomes the destination.
-Install `fs-schema[mashumaro]` for dataclass JSON.
-Install `fs-schema[orjson]` for a faster JSON encoder.
-`load()` returns a decoding failure as a value.
-`load(Model)` is the same call, typed as `Model | Exception`, so a static checker can name the model.
-Pure runtime typechecking uses `load()` with no argument.
-`load(Model)` raises `TypeError` before the read when the declared loader is a callable, or a class that is not that model or a subclass of it.
-No declared loader uses the argument.
-`raise_exn` raises that failure and keeps the success type.
+```python
+fss.put(delivery.manifest, "notes.txt")  # text notes.txt, even when that path exists
+fss.put(delivery.manifest, Path("notes.txt"))  # copies that file
+fss.put(delivery.manifest, delivery.manifest)  # a schema node copies too
+fss.put(delivery.manifest, None)  # empty file; missing parents are created
+loaded: Manifest = fss.raise_exn(delivery.manifest.load())
+delivery.manifest.load(Manifest)  # same call, typed Model | Exception
+
+
+class Other:
+    pass
+
+
+delivery.manifest.load(Other)  # TypeError before the read; a callable loader does this too
+```
+
+`fs-schema[mashumaro]` stores a dataclass as JSON. `fs-schema[orjson]` is a faster encoder. A reader sees the old file or the new one. An object with `save` writes a file, then that file replaces the path. No declared loader ignores `load(Model)`.
 
 ```text
 put(path, data=None) -> None
@@ -570,20 +558,6 @@ link_to(path, target, *, hard=False) -> None
 copy_to(source, dest, *, follow_symlinks=True, clean=False) -> None
 raise_exn(value: T | Exception) -> T
 ```
-
-`link_to` replaces the path with a link to `target`.
-`hard=False` is a symlink and is not followed, so a link to a link stays pointed at that link.
-`hard=True` is a hard link to the file inode. `os.link` raises `OSError` across filesystems.
-A string target is a path.
-The same atomic replace as `put`.
-
-`copy_to` copies a file or directory onto another path.
-Source and destination are paths, path strings, or schema nodes.
-`follow_symlinks=True` writes regular files and directories, including a link that points at a directory.
-`follow_symlinks=False` copies the link text unchanged.
-`clean=False` copies onto what is already there. Extra names at the destination stay.
-`clean=True` removes the destination first.
-The same path, or one path inside the other, raises `ValueError`.
 
 ```text
 node.link_to(target, *, hard=False) -> None
@@ -596,15 +570,16 @@ class Album(fss.Schema):
 
 
 album = Album.relative_to(Path("album"))
-album.images.parse("a.png").link_to(Path("camera/a.png"))
-album.images.parse("a.png").link_to(Path("camera/a.png"), hard=True)
+album.images.parse("a.png").link_to(Path("camera/a.png"))  # symlink; a link to a link stays; same replace as put
+album.images.parse("a.png").link_to(Path("camera/a.png"), hard=True)  # inode; OSError across filesystems
 bound = fss.raise_mismatch(Album.bind(Path("album")))
 publish = Album.relative_to(Path("publish"))
-bound.copy_to(publish)
-bound.copy_to(publish, follow_symlinks=False)
-bound.copy_to(publish, clean=True)
-fss.link_to("album/b.png", "camera/b.png")
-fss.copy_to(bound, publish)
+bound.copy_to(publish)  # regular files, including a link to a directory; extra names stay
+bound.copy_to(publish, follow_symlinks=False)  # link text unchanged
+bound.copy_to(publish, clean=True)  # destination removed first
+fss.link_to("album/b.png", "camera/b.png")  # a string target is a path
+fss.copy_to(bound, publish)  # source and dest are paths or schema nodes
+album.copy_to(album)  # the same path, or one path inside the other, is ValueError
 ```
 
 `examples/symlink_copy.py` links each frame, then publishes that tree as regular files.
@@ -621,6 +596,30 @@ Raise an issue if one of these is a problem.
 - `link_to` replaces a file or a link. It can point at a missing path. It does not replace a real directory.
 - `copy_to(follow_symlinks=True)` writes regular files and directories, including a link that points at a directory. `False` copies the link text unchanged.
 - A link at the destination is replaced, not written through. A dangling link is missing to `exists_opt`.
+
+## Ancestor captures
+
+A nested dict sees the ancestor. A named class does not. Closest wins. `<ts:spec>` overrides when both specs are the same type. A same-node `<ts>` next to `{ts}` is a declaration error.
+
+```python
+class Roll(fss.Schema):
+    schema = {
+        fss.Dir(alias="runs", fmt="run_{ts:%Y%m%d}", min=0): {
+            "log": "<ts>.log",  # <ts> reads the ancestor; {ts} would be this field
+            "mark": "a/<b>.txt",  # basename a<b>.txt
+            "parts": fss.File(fmt="<ts>_{n:d}.txt", min=0),
+        }
+    }
+
+
+def write_run(root: Path, when: datetime) -> None:
+    Roll.relative_to(root).runs.format(ts=when).create(
+        log="hello\n",
+        parts=[({"n": 1}, b"part\n")],
+    )
+```
+
+[Example](https://github.com/heyentropyyield/fs-schema/blob/master/examples/parent_capture.py)
 
 ## xor
 
@@ -662,16 +661,22 @@ class Box(fss.Schema):
 
 def publish_note(root: Path) -> str:
     planned = Open.relative_to(root)
-    planned.slot.body.create("hello\n")
+    planned.slot.body.create("hello\n")  # unnamed: shared children sit on the xor
     planned.slot.stamp.create("{}\n")
-    bound = fss.raise_mismatch(planned.bind())
+    _ = planned.slot[0]  # that branch anyway
+    bound = fss.raise_mismatch(planned.bind())  # Letter or Table
     return bound.slot.body.read_text()
+
+
+def publish_letter(root: Path) -> str:
+    _ = Box.slot.letter  # a keyword stays the Letter class
+    planned = Box.relative_to(root)
+    planned.slot.letter.create(body="hello\n", stamp="{}\n")
+    bound = fss.raise_mismatch(planned.bind())
+    _ = Box.bind(root, fast=True)  # still tries every branch
+    return bound.slot.body.read_text()  # .letter is not on the bound value
 ```
 
-Unnamed branches promote their children onto the xor. `planned.slot.body`, `.stamp`, and `.rows` are those files. The same child on every branch is one file. A name that differs warns, and reading it raises. `[0]` is that branch anyway.
-
-A keyword does not promote. `Box.slot.letter` and `Box.slot["letter"]` are the `Letter` class. `Box.relative_to(root).slot.letter.create(body="...", stamp="...")` writes that branch. `slot.create()` on the union raises.
-
-Bind returns the winning schema. `bound.slot` is a `Letter` or a `Table`. `isinstance` tells which. Read `slot.body` or `slot.rows`. The other branch name is not on the bound value. `fast=True` still tries every branch. A directory whose name matched, but no branch bound, is a mismatch. `skip_mismatch` drops that directory.
+`planned.slot.rows` warns, and reading it raises. `planned.slot.create()` on the union raises. A directory whose name matched, but no branch bound, is `MismatchErr`. `skip_mismatch` drops it.
 
 [Example](https://github.com/heyentropyyield/fs-schema/blob/master/examples/xor_directory.py)

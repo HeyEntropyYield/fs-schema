@@ -94,6 +94,14 @@ class Schema:
             return f"declaration {key!r} {detail}"
 
         @staticmethod
+        def unbound(name: str) -> str:
+            return f"capture {name!r} is not in scope"
+
+        @staticmethod
+        def spec(name: str) -> str:
+            return f"capture {name!r} spec does not match its value"
+
+        @staticmethod
         def schema_or_dict(key: object, item: object) -> str:
             return _must_be_a(f"key {key!r} member {item!r}", "Schema or dict")
 
@@ -192,6 +200,10 @@ class Fmt:
     @staticmethod
     def field(name: str) -> str:
         return _must_be_a(f"format field {name!r}", "identifier")
+
+    @staticmethod
+    def spec(spec: str) -> str:
+        return _quote(_cannot("format spec", "contain a capture"), spec)
 
     @staticmethod
     def value(kind: str) -> str:

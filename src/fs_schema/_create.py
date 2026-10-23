@@ -125,7 +125,7 @@ def _write_child_matches_exn(template: Matches[Match, Defn], defn: Defn, key: st
     if _is_member_seq(value):
         if _is_member(value):
             raise TypeError(em.Create.pair(key))
-        if defn_node(defn).fmt is None:
+        if not defn_node(defn).fmt:
             raise TypeError(em.Create.names(key))
         if not isinstance(template, Template):
             raise AssertionError("formatted collection")
@@ -137,7 +137,7 @@ def _write_child_matches_exn(template: Matches[Match, Defn], defn: Defn, key: st
 def _write_matches_fmt_file_exn(template: Matches[Match, Defn], defn: File[object], key: str, body: Puttable) -> None:
     node = defn_node(defn)
     names = capture_names(defn)
-    if node.fmt is None or not isinstance(template, Template):
+    if not node.fmt or not isinstance(template, Template):
         raise TypeError(em.Create.collection(key))
     missing = names - template.fmt_fields.keys()
     if missing:
@@ -178,9 +178,9 @@ def _write_matches_named_exn(
     names = capture_names(defn)
     node = defn_node(defn)
     for name, body in value.items():
-        if not (found := safe(Raw[Name](name))) or node.select(found) is None:
+        if not (safe_name := safe(Raw[Name](name))) or node.select(safe_name) is None:
             raise ValueError(em.Create.member(key, name, filenames=name in names))
-        _write_formatted_exn(defn, plan_fixed_exn(child_path_exn(template.path, found), defn), body)  # pyright: ignore[reportArgumentType]
+        _write_formatted_exn(defn, plan_fixed_exn(child_path_exn(template.path, safe_name), defn), body)  # pyright: ignore[reportArgumentType]
 
 
 @dispatch

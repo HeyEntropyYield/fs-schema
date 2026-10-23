@@ -18,11 +18,19 @@ class _Text(str, Generic[_K]):
 
 
 class Raw(_Text[_K]):
-    """Unproved text of one kind"""
+    """Boundary text. Not checked"""
 
 
-class Safe(Raw[_K]):
-    """Proved text of one kind. A proved value is still that kind"""
+class Open(Raw[_K]):
+    """Checked text. A ref may remain"""
+
+
+class Resolved(Raw[_K]):
+    """No refs left. Not checked as one path component"""
+
+
+class Safe(Resolved[_K], Open[_K]):
+    """One path component. Passable as Open or Resolved"""
 
 
 class Name:
@@ -43,6 +51,8 @@ PathIsh: TypeAlias = str | os.PathLike[str]
 # A parsed template field: {n:d} -> int, {stem} -> str, dt() -> datetime
 FmtFieldT: TypeAlias = str | int | datetime
 FmtFields: TypeAlias = Mapping[str, FmtFieldT]
+# field_name -> field_spec. field_spec is the text after {field_name:}, or ""
+FieldSpecs: TypeAlias = dict[str, str]
 
 Json: TypeAlias = dict[str, "Json"] | list["Json"] | str | int | float | bool | None
 JsonRo: TypeAlias = Mapping[str, "JsonRo"] | Sequence["JsonRo"] | str | int | float | bool | None

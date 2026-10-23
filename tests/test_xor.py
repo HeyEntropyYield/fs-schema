@@ -94,7 +94,7 @@ def test_xor_compile_rejects_a_non_schema_leaf() -> None:
     bad = xor()
     object.__setattr__(bad, "entries", ((None, 1),))
     with pytest.raises(TypeError, match=re.escape(em.Schema.text("Leaf", em.Schema.Body.schema_or_dict("slot", 1)))):
-        _dir_defn_exn("Leaf", "tests", "slot", Dir(name="slot"), bad.entries, origin=0, warn=False)
+        _dir_defn_exn("Leaf", "tests", "slot", Dir(name="slot"), bad.entries, {}, origin=0, warn=False)
 
 
 def test_xor_pairs_keep_definition_order_and_reject_non_schemas() -> None:

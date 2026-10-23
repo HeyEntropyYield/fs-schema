@@ -24,9 +24,14 @@ from ._decl import (
     normalize_name,
     unnamed_clashes,
 )
+from ._fmt import REF
+from ._fmt_spec import spec_type_exn
 from ._schema import Schema, SchemaCls
+from ._types import FieldSpecs, Safe
 
 _L = TypeVar("_L")
+INLINE: Final = "_fs_schema_inline"
+CAPTURE_SCOPE: Final = "_fs_schema_capture_scope"
 
 
 def is_schema_type(value: object) -> TypeIs[type[Schema]]:
@@ -52,13 +57,37 @@ def _is_dot_dir(node: Node, *, alias: bool) -> bool:
     return isinstance(node, Dir) and node.name == "." and bool(node.alias) is alias
 
 
-def _compile_local_node_exn(class_name: str, key: object, node: Node) -> None:
+def _extended(scope: FieldSpecs, node: Node) -> FieldSpecs:
+    # Copy when this node adds fields, so a sibling does not see them
+    specs = node.selector.field_specs()
+    if not specs:
+        return scope
+    return {**scope, **specs}
+
+
+def _check_refs_exn(class_name: str, key: object, node: Node, scope: FieldSpecs) -> None:
+    # Ancestors only. This node's own fields are added after this check
+    for text in (node.name, node.fmt):
+        # Safe already applied /< . The result may contain a literal <
+        if not text or isinstance(text, Safe):
+            continue
+        for match in REF.finditer(text):
+            field_name, field_spec = match.group(1), match.group(2)
+            if field_name not in scope:
+                raise _bad(class_name, key, em.Schema.Body.unbound(field_name))
+            # "" is a field_spec. None means no override
+            if field_spec is not None and spec_type_exn(field_spec) is not spec_type_exn(scope[field_name]):
+                raise _bad(class_name, key, em.Schema.Body.spec(field_name))
+
+
+def _check_node_exn(class_name: str, key: object, node: Node, scope: FieldSpecs) -> None:
     if _is_dot_dir(node, alias=False):
         raise _bad(class_name, key, em.Node.DOT_ALIAS)
     if node.alias and (not node.alias.isidentifier() or keyword.iskeyword(node.alias) or node.alias.startswith("_")):
         raise _bad(class_name, key, em.Schema.Body.ALIAS)
     if isinstance(node, Dir) and node.schema is not None and not is_schema_type(node.schema):
         raise _bad(class_name, key, em.Schema.Body.DIR_SCHEMA)
+    _check_refs_exn(class_name, key, node, scope)
 
 
 def aliased_file(alias: str, source: File[_L]) -> File[_L]:
@@ -132,13 +161,19 @@ def _defn_satisfies(actual: Defn, required: Defn) -> bool:
 
 
 def _compile_inline_schema_exn(
-    class_name: str, module: str, position: int, layout: dict[object, object], *, part: int | None = None
+    class_name: str,
+    module: str,
+    position: int,
+    layout: dict[object, object],
+    scope: FieldSpecs,
+    *,
+    part: int | None = None,
 ) -> type[Schema]:
     label = f"{position}" if part is None else f"{position}_{part}"
     generated = type(
         f"_{class_name}Child{label}",
         (Schema,),
-        {"__module__": module, "schema": layout},
+        {"__module__": module, "schema": layout, INLINE: True, CAPTURE_SCOPE: dict(scope)},
     )
     if not is_schema_type(generated):
         raise AssertionError("generated Schema child has an invalid type")
@@ -168,15 +203,17 @@ def _dir_defn_exn(
     key: object,
     node: Dir[Schema],
     entries: Sequence[tuple[str | None, object]],
+    scope: FieldSpecs,
     *,
     origin: int,
     warn: bool,
 ) -> DirDefn:
     # A sequence is entries of (None, item). xor.entries already carries the branch name
     layouts: list[DirLayout] = []
+    child_scope = _extended(scope, node)
     for index, (name, item) in enumerate(entries):
         if _is_raw_mapping(item):
-            item = _compile_inline_schema_exn(class_name, module, origin, item, part=index)
+            item = _compile_inline_schema_exn(class_name, module, origin, item, child_scope, part=index)
         if not is_schema_type(item):
             raise _invalid_schema(class_name, em.Schema.Body.schema_or_dict(key, item))
         layouts.append(_layout_from_schema_exn(class_name, key, node, item, name=name))
@@ -202,7 +239,7 @@ def _raw_schema(cls: type[Schema]) -> object:
     return cls.schema if "schema" in cls.__dict__ else {}
 
 
-def _compile_local_defns_exn(cls: type[Schema]) -> tuple[Defn, ...]:
+def _compile_local_defns_exn(cls: type[Schema], scope: FieldSpecs) -> tuple[Defn, ...]:
     # All usages of File/Dir are here, and they also raise (Node ctor)
     raw = _raw_schema(cls)
     if not _is_raw_mapping(raw):
@@ -211,7 +248,7 @@ def _compile_local_defns_exn(cls: type[Schema]) -> tuple[Defn, ...]:
     defns: list[Defn] = []
 
     def add_file_exn(node: File, key: object):
-        _compile_local_node_exn(cls.__name__, key, node)
+        _check_node_exn(cls.__name__, key, node, scope)
         defns.append(node)
 
     for key, value in entries.items():
@@ -219,53 +256,53 @@ def _compile_local_defns_exn(cls: type[Schema]) -> tuple[Defn, ...]:
             # Normal RHS dicts/dirs
             case str() as name, layout if _is_raw_mapping(layout):
                 node: Dir[Schema] = Dir(name=name)
-                _compile_local_node_exn(cls.__name__, key, node)
+                _check_node_exn(cls.__name__, key, node, scope)
                 child_type = _compile_inline_schema_exn(cls.__name__, cls.__module__,
-                    len(defns), layout)  # fmt: skip
+                    len(defns), layout, _extended(scope, node))  # fmt: skip
                 defns.append(_dir_defn_exn(cls.__name__, cls.__module__, key, node,
-                    ((None, child_type),), origin=len(defns), warn=False))  # fmt: skip
+                    ((None, child_type),), _extended(scope, node), origin=len(defns), warn=False))  # fmt: skip
 
             case Dir() as node, layout if _is_raw_mapping(layout):
-                _compile_local_node_exn(cls.__name__, key, node)
+                _check_node_exn(cls.__name__, key, node, scope)
                 child_type = _compile_inline_schema_exn(cls.__name__, cls.__module__,
-                    len(defns), layout)  # fmt: skip
+                    len(defns), layout, _extended(scope, node))  # fmt: skip
                 defns.append(_dir_defn_exn(cls.__name__, cls.__module__, key, node,
-                    ((None, child_type),), origin=len(defns), warn=False))  # fmt: skip
+                    ((None, child_type),), _extended(scope, node), origin=len(defns), warn=False))  # fmt: skip
 
             # RHS Xor (Seq)
             case Dir() as node, Xor() as rhs:
-                _compile_local_node_exn(cls.__name__, key, node)
+                _check_node_exn(cls.__name__, key, node, scope)
                 defns.append(_dir_defn_exn(cls.__name__, cls.__module__, key, node,
-                    rhs.entries, origin=len(defns), warn=cls.warn))  # fmt: skip
+                    rhs.entries, _extended(scope, node), origin=len(defns), warn=cls.warn))  # fmt: skip
 
             case str() as name, Xor() as rhs:
                 node = Dir(name=name)
-                _compile_local_node_exn(cls.__name__, key, node)
+                _check_node_exn(cls.__name__, key, node, scope)
                 defns.append(_dir_defn_exn(cls.__name__, cls.__module__, key, node,
-                    rhs.entries, origin=len(defns), warn=cls.warn))  # fmt: skip
+                    rhs.entries, _extended(scope, node), origin=len(defns), warn=cls.warn))  # fmt: skip
 
             case Dir() as node, rhs if _is_layout_seq(rhs):
-                _compile_local_node_exn(cls.__name__, key, node)
+                _check_node_exn(cls.__name__, key, node, scope)
                 defns.append(_dir_defn_exn(cls.__name__, cls.__module__, key, node,
-                    tuple((None, item) for item in rhs), origin=len(defns), warn=False))  # fmt: skip
+                    tuple((None, item) for item in rhs), _extended(scope, node), origin=len(defns), warn=False))  # fmt: skip
 
             case str() as name, rhs if _is_layout_seq(rhs):
                 node = Dir(name=name)
-                _compile_local_node_exn(cls.__name__, key, node)
+                _check_node_exn(cls.__name__, key, node, scope)
                 defns.append(_dir_defn_exn(cls.__name__, cls.__module__, key, node,
-                    tuple((None, item) for item in rhs), origin=len(defns), warn=False))  # fmt: skip
+                    tuple((None, item) for item in rhs), _extended(scope, node), origin=len(defns), warn=False))  # fmt: skip
 
             # Normal RHS Schema
             case str() as name, rhs if is_schema_type(rhs):
                 node = Dir(name=name)
-                _compile_local_node_exn(cls.__name__, key, node)
+                _check_node_exn(cls.__name__, key, node, scope)
                 defns.append(_dir_defn_exn(cls.__name__, cls.__module__, key, node,
-                    ((None, rhs),), origin=len(defns), warn=False))  # fmt: skip
+                    ((None, rhs),), _extended(scope, node), origin=len(defns), warn=False))  # fmt: skip
 
             case Dir() as node, rhs if is_schema_type(rhs):
-                _compile_local_node_exn(cls.__name__, key, node)
+                _check_node_exn(cls.__name__, key, node, scope)
                 defns.append(_dir_defn_exn(cls.__name__, cls.__module__, key, node,
-                    ((None, rhs),), origin=len(defns), warn=False))  # fmt: skip
+                    ((None, rhs),), _extended(scope, node), origin=len(defns), warn=False))  # fmt: skip
 
             # Normal files
             case str() as alias, str() as name:
@@ -325,7 +362,9 @@ def schema_ctor_compile_defn(cls: type[Schema]) -> Exception | None:
     if not is_schema_type(base):
         raise AssertionError("validated Schema class lost its Schema base")
     try:  # DirDefn can raise ValueError
-        local_defns = _compile_local_defns_exn(cls)  # Uses File/Dir (Node), which fails fast
+        raw_scope = vars(cls).get(CAPTURE_SCOPE)
+        scope: FieldSpecs = typing.cast(dict[str, str], raw_scope) if isinstance(raw_scope, dict) else {}
+        local_defns = _compile_local_defns_exn(cls, scope)  # Uses File/Dir (Node), which fails fast
         _ = DirLayout(local_defns)
         defns = _merge_defns_exn(schema_defn_for(base).defns, local_defns)
         type.__setattr__(cls, "_schema_defn", DirLayout(defns))
@@ -348,9 +387,10 @@ def _schema_ctor_installed_names(ancestor: type) -> frozenset[str]:
 def schema_ctor_check_defn_shadows(cls: type[Schema]) -> Exception | None:
     for defn in schema_defn_for(cls).defns:
         node = defn_node(defn)
-        for name in (node.alias or None, normalize_name(node.name) if node.name else None):
-            if name is None:
-                continue
+        normalized = normalize_name(node.name) if node.name else None
+        if node.name and not normalized:
+            return ValueError(em.Fmt.basename(node.name))
+        for name in (n for n in (node.alias, normalized) if n):
             # An installed child on a parent is that child, not a reserved member.
             reserved = name in _CAPTURE_MEMBERS or any(
                 name in ancestor.__dict__ and name not in _schema_ctor_installed_names(ancestor)

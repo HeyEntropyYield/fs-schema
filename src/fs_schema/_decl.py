@@ -12,9 +12,9 @@ from typing_extensions import Protocol, Self, TypeVar, override, runtime_checkab
 
 import fs_schema._errmsg as em
 
-from ._fmt import CaptureField, CaptureMap, ParsedCaptures, compile_fmt_exn, safe
+from ._fmt import CaptureField, CaptureMap, ParsedCaptures, open_str, safe, valid_fmt_exn
 from ._selector import Selector
-from ._types import FmtStr, LoadSpec, Located, MatchPat, Name, Raw, Safe
+from ._types import FmtStr, LoadSpec, Located, MatchPat, Name, Open, Raw, Safe
 
 if TYPE_CHECKING:
     from ._schema import Schema
@@ -45,13 +45,13 @@ SortFn: TypeAlias = Callable[[Match], SortKey]
 ## User schema file/dir declarations
 
 
-def _node_ctor_name_exn(name: str, node: object) -> Safe[Name]:
-    # "" and "." are this path. safe rejects both. child_path_exn keeps the parent
+def _node_ctor_name_exn(name: str, node: object) -> Open[Name]:
+    # "" and "." are this path. open_str rejects both. child_path_exn keeps the parent
     if not name or (isinstance(node, Dir) and name == "."):
         return Safe[Name](name)
-    if not (found := safe(Raw[Name](name))):
+    if not (opened := open_str(Raw[Name](name))):
         raise ValueError(em.Schema.Body.NAME)
-    return found
+    return opened
 
 
 # Declaration specs. Exact names are positional scalars (max implicit 1).
@@ -60,20 +60,14 @@ def _node_ctor_name_exn(name: str, node: object) -> Safe[Name]:
 @define(frozen=True, slots=True, kw_only=True)
 class Node:
     # "" is this path, not a missing name
-    name: Safe[Name] = attr_field(
+    name: Open[Name] = attr_field(
         default=Safe[Name](""),
         kw_only=False,
         converter=Converter(_node_ctor_name_exn, takes_self=True),
     )
     # "" fmt and match are stored as None. A stored value is a real pattern
-    fmt: Safe[FmtStr] | None = attr_field(
-        default=None,
-        converter=lambda fmt: compile_fmt_exn(Raw[FmtStr](fmt))[0] if fmt else None,  # pyright: ignore[reportAny]
-    )
-    match: Raw[MatchPat] | None = attr_field(
-        default=None,
-        converter=lambda m: Raw[MatchPat](m) if m else None,  # pyright: ignore[reportAny]
-    )
+    fmt: Open[FmtStr] | None = attr_field(default=None, converter=valid_fmt_exn)
+    match: Raw[MatchPat] | None = attr_field(default=None, converter=lambda m: Raw[MatchPat](m) if m else None)  # pyright: ignore[reportAny]
     min: int = attr_field(default=1)
     max: int | None = attr_field(default=None)
     # "" is stored as None. A stored alias is an identifier
@@ -353,13 +347,14 @@ def _dir_defn_ctor_uniq_lookups_exn(child_defns: tuple["Defn", ...]) -> dict[str
             add_uniq(identities, node.alias, index)
             add_uniq(lookup, node.alias, index)
             continue
-        for identity in dict.fromkeys(
-            key for key in (node.alias, node.name, normalize_name(node.name), node.fmt) if key
-        ):
+        normalized = normalize_name(node.name) if node.name else None
+        for identity in dict.fromkeys(key for key in (node.alias, node.name, normalized, node.fmt) if key):
             add_uniq(identities, identity, index)
         if node.name:
+            if normalized is None:
+                raise ValueError(em.Fmt.basename(node.name))
             add_uniq(lookup, node.name, index)
-            add_uniq(lookup, normalize_name(node.name), index)
+            add_uniq(lookup, normalized, index)
         if node.alias:
             add_uniq(lookup, node.alias, index)
     return lookup
@@ -368,12 +363,11 @@ def _dir_defn_ctor_uniq_lookups_exn(child_defns: tuple["Defn", ...]) -> dict[str
 Defn: TypeAlias = File[object] | DirDefn
 
 
-def normalize_name(name: Safe[Name]) -> Safe[Name]:
+def normalize_name(name: Raw[Name]) -> Safe[Name] | None:
     normalized = re.sub(r"[^A-Za-z0-9_]+", "_", name)
-    if normalized == name:
+    if isinstance(name, Safe) and normalized == name:
         return name
-    # The replacement is "_" or an identifier character, so the result stays a basename
-    return Safe[Name](normalized)
+    return safe(Raw[Name](normalized))
 
 
 def defn_node(defn: Defn) -> Node:

@@ -1,5 +1,6 @@
 # pyright: reportPrivateUsage=false, reportUnknownMemberType=false, reportUnknownArgumentType=false
 # pyright: reportAttributeAccessIssue=false
+import re
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
@@ -11,7 +12,7 @@ from fs_schema import FILES, Match, MismatchErr, is_mismatch
 from fs_schema import _errmsg as em
 from fs_schema._bind import bind_children
 from fs_schema._decl import Defn, Dir, DirDefn, DirLayout, File, OneDefn
-from fs_schema._fmt import dt
+from fs_schema._fmt import CaptureMap, dt
 from fs_schema._schema import (
     BoundChild,
     FileMatch,
@@ -544,10 +545,15 @@ def test_dir_schema_has_no_runtime_merge_or_second_binding(tmp_path: Path, monke
     visited: list[Path] = []
 
     def counted(
-        path: Path, layout: DirLayout, cache: bind_mod._FsCache, *, fast: bool = False
+        path: Path,
+        layout: DirLayout,
+        cache: bind_mod._FsCache,
+        *,
+        fast: bool = False,
+        scope: CaptureMap | None = None,
     ) -> tuple[BoundChild, ...] | MismatchErr:
         visited.append(path)
-        return original(path, layout, cache, fast=fast)
+        return original(path, layout, cache, fast=fast, scope=scope)
 
     monkeypatch.setattr(bind_mod, "bind_children", counted)
     bound = Root.bind(tmp_path / "root")
@@ -660,3 +666,11 @@ def test_unsafe_directory_entry_is_skipped(tmp_path: Path) -> None:
     err = _bind(gone, (File(fmt="{stem}", min=1),))
     assert isinstance(err, MismatchErr)
     assert bad not in str(err)
+
+
+def test_parse_rejects_a_formatted_name_that_fails_the_regex(tmp_path: Path) -> None:
+    class Both(Schema):
+        schema = {"parts": File(fmt="part-{n:d}.txt", match=r"part-1[.]txt", min=0)}
+
+    with pytest.raises(ValueError, match=re.escape(em.Parse.member("part-2.txt"))):
+        Both.relative_to(tmp_path).parts.parse("part-2.txt")

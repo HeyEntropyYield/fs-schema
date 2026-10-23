@@ -71,6 +71,21 @@ def _forbid_filesystem(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(Path, name, fail)
 
 
+def test_plan_at_filesystem_root_keeps_absolute_children() -> None:
+    class Rooted(Schema):
+        schema = {"note": "note.txt"}
+
+    plan = Rooted.relative_to("/")
+    assert plan.path == Path("/")
+    assert plan.name == ""
+    assert plan.note.path == Path("/note.txt")
+    assert plan.note.name == "note.txt"
+    with pytest.raises(ValueError, match=re.escape(em.Fmt.basename("."))):
+        Rooted.relative_to(".")
+    with pytest.raises(ValueError, match=re.escape(em.Fmt.basename("/.."))):
+        Rooted.relative_to("/..")
+
+
 def test_relative_to_has_stable_exact_root_type_and_supports_forward_beartype() -> None:
     first = _PlannedRoot.relative_to("missing")
     second = _PlannedRoot.relative_to("elsewhere")
