@@ -4,7 +4,7 @@ API by git tag. Signatures: [reference](https://heyentropyyield.github.io/fs-sch
 
 ## Unreleased
 
-`<name>` is an ancestor capture in the same declaration. A nested dict sees it. A named class does not. `/<` is a literal `<`.
+`<name>` is an ancestor capture in the same declaration. A nested dict sees it. A named class does not. On that same fmt, `<name>` next to `{name}` is the field again. The values must be equal, and a different spec is allowed when the type matches. `/<` is a literal `<`.
 [Ancestor captures](https://heyentropyyield.github.io/fs-schema/reference/#ancestor-captures)
 [example](https://github.com/heyentropyyield/fs-schema/blob/master/examples/parent_capture.py)
 

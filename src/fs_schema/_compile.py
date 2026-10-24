@@ -68,17 +68,17 @@ def _extended(scope: FieldSpecs, node: Node) -> FieldSpecs:
 
 
 def _check_refs_exn(class_name: str, key: object, node: Node, scope: FieldSpecs) -> None:
-    # Ancestors only. This node's own fields are added after this check
-    for text in (node.name, node.fmt):
+    # Name is ancestor-only. Fmt also sees this node's fields
+    for text, seen in ((node.name, scope), (node.fmt, {**scope, **node.selector.field_specs()})):
         # Safe already applied /< . The result may contain a literal <
         if not text or isinstance(text, Safe):
             continue
         for match in REF.finditer(text):
             field_name, field_spec = match.group(1), match.group(2)
-            if field_name not in scope:
+            if field_name not in seen:
                 raise _bad(class_name, key, em.Schema.Body.unbound(field_name))
             # "" is a field_spec. None means no override
-            if field_spec is not None and spec_type_exn(field_spec) is not spec_type_exn(scope[field_name]):
+            if field_spec is not None and spec_type_exn(field_spec) is not spec_type_exn(seen[field_name]):
                 raise _bad(class_name, key, em.Schema.Body.spec(field_name))
 
 

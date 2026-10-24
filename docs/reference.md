@@ -599,15 +599,17 @@ Raise an issue if one of these is a problem.
 
 ## Ancestor captures
 
-A nested dict sees the ancestor. A named class does not. Closest wins. `<ts:spec>` overrides when both specs are the same type. A same-node `<ts>` next to `{ts}` is a declaration error.
+A nested dict sees the ancestor. A named class does not. Closest wins. `<ts:spec>` overrides when both specs are the same type.
+
+`<n>` on the same fmt as `{n}` is that field again. The name matches when the values are equal. `<n:02d>` is a second way to write it, so `1_01` and `1_1` are both `n=1`. A different type is a declaration error.
 
 ```python
 class Roll(fss.Schema):
     schema = {
         fss.Dir(alias="runs", fmt="run_{ts:%Y%m%d}", min=0): {
-            "log": "<ts>.log",  # <ts> reads the ancestor; {ts} would be this field
+            "log": "<ts>.log",  # the run's ts
             "mark": "a/<b>.txt",  # basename a<b>.txt
-            "parts": fss.File(fmt="<ts>_{n:d}.txt", min=0),
+            "parts": fss.File(fmt="<ts>_{n:d}_<n:02d>.txt", min=0),  # <n:02d> is this file's n again
         }
     }
 
@@ -615,7 +617,7 @@ class Roll(fss.Schema):
 def write_run(root: Path, when: datetime) -> None:
     Roll.relative_to(root).runs.format(ts=when).create(
         log="hello\n",
-        parts=[({"n": 1}, b"part\n")],
+        parts=[({"n": 1}, b"part\n")],  # 19700101_1_01.txt
     )
 ```
 

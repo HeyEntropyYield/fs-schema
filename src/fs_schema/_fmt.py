@@ -275,10 +275,12 @@ def _safe(text: Resolved[_K]) -> Safe[_K] | None:
 def _compile_fmt_exn(pattern: Raw[FmtStr]) -> tuple[Open[FmtStr], tuple[FormatField, ...], Spec]:
     # Literal, field, and conversion checks, then Spec. This return is the compiled pattern
     fields = _format_fields_exn(pattern)  # field_name is an identifier. field_spec has no <
-    spec = Spec(pattern)  # unsupported type
+    spec = Spec(pattern)  # unsupported type, so a bad spec dies before the basename check
     if REF.search(pattern):
         return Open[FmtStr](pattern), fields, spec
-    return safe_exn(pattern), fields, spec
+    # /< is already a literal here, so Spec parses the same text format writes
+    closed = safe_exn(pattern)
+    return closed, fields, Spec(closed)
 
 
 # This extracts and validates all the fields in the pattern
@@ -319,7 +321,7 @@ def _refs_as_x(text: Raw[_K]) -> Resolved[None] | None:
 
 
 def _refs_resolve_exn(text: Raw[_K], scope: CaptureMap | None) -> Resolved[_K]:
-    # Ancestor frame only. This node's own fields are not in scope yet
+    # Ancestor frame only. This node's repeated fields are braces by then
 
     def replace(match: re.Match[str]) -> str:
         field_name = match.group(1)

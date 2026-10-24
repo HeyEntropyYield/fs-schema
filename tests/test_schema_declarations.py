@@ -1,5 +1,6 @@
 # pyright: reportPrivateUsage=false
 import re
+import warnings
 from pathlib import Path
 from unittest.mock import patch
 
@@ -28,6 +29,28 @@ def test_declarations_are_frozen_slotted_values_with_contextual_defaults() -> No
     assert not hasattr(fixed, "__dict__")
     equal: _decl.File[object] = _decl.File("value.txt")
     assert hash(fixed) == hash(equal)
+
+
+def test_fixed_name_with_a_format_field_warns() -> None:
+    with pytest.warns(UserWarning, match=re.escape(em.Node.NAME_FIELD)):
+
+        class Dated(fs_schema.Schema):  # pyright: ignore[reportUnusedClass]
+            schema = {"log": "{ts:%Y%m%d}.log"}
+
+    with pytest.warns(UserWarning, match=re.escape(em.Node.NAME_FIELD)):
+
+        class Broken(fs_schema.Schema):  # pyright: ignore[reportUnusedClass]
+            schema = {"log": "{ts.log"}
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+
+        class Braces(fs_schema.Schema):  # pyright: ignore[reportUnusedClass]
+            schema = {"log": "a{{b}}.txt"}
+
+        class Quiet(fs_schema.Schema):  # pyright: ignore[reportUnusedClass]
+            warn = False
+            schema = {"log": "{n:d}.log"}
 
 
 def test_name_and_match_are_valid_while_name_and_fmt_are_not() -> None:
