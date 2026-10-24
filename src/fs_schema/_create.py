@@ -2,7 +2,7 @@
 import os
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import TypeAlias, final
+from typing import TypeAlias, cast, final
 
 from plum import dispatch
 from typing_extensions import TypeIs
@@ -13,7 +13,7 @@ from ._decl import Defn, DirDefn, File, Match, capture_names, defn_node, validat
 from ._fmt import Captures, captures, child_path_exn, safe
 from ._plan import format_any_exn, plan_fixed_exn
 from ._schema import FixedDir, FixedFile, Matches, SchemaCls, Template
-from ._types import CreateTop, FmtFields, Name, PathIsh, Puttable, Raw
+from ._types import CreateTop, FmtFields, Name, Puttable, Raw
 
 _Member: TypeAlias = tuple[FmtFields | Captures, CreateTop]
 
@@ -92,6 +92,20 @@ def _is_member_seq(value: object) -> TypeIs[Sequence[_Member]]:
     return isinstance(value, Sequence) and not isinstance(value, (str, bytes, Path))
 
 
+# CreateTop with os.PathLike[str] replaced by Path. plum can resolve this
+_CreatePath: TypeAlias = Puttable | Path | Mapping[str, object] | Sequence[object] | None
+
+
+def _create_path(value: object) -> object:
+    # str and bytes stay file bodies. int stays int so plum can reject a bad spec
+    if isinstance(value, os.PathLike) and not isinstance(value, (str, bytes)):
+        return Path(os.fsdecode(value))
+    if isinstance(value, Mapping):
+        spec = cast(Mapping[object, object], value)
+        return {key: _create_path(item) for key, item in spec.items()}
+    return value
+
+
 def _write_child_exn(directory: FixedDir, defn: Defn, key: str, value: CreateTop) -> None:
     child = directory[key]
     if not defn_node(defn).name:
@@ -99,16 +113,16 @@ def _write_child_exn(directory: FixedDir, defn: Defn, key: str, value: CreateTop
             raise AssertionError("collection child")
         _write_child_matches_exn(child, defn, key, value)
         return
-    _write_child_exact_exn(defn, child, value)  # pyright: ignore[reportArgumentType]
+    _write_child_exact_exn(defn, child, _create_path(value))  # pyright: ignore[reportArgumentType]
 
 
 @dispatch
-def _write_child_exact_exn(defn: File, child: FixedFile, value: Puttable | PathIsh | None) -> None:  # pyright: ignore[reportRedeclaration]
+def _write_child_exact_exn(defn: File, child: FixedFile, value: Puttable | Path | None) -> None:  # pyright: ignore[reportRedeclaration]
     _ = child.create(value)
 
 
 @dispatch
-def _write_child_exact_exn(defn: DirDefn, child: FixedDir, value: Mapping[str, CreateTop] | None) -> None:
+def _write_child_exact_exn(defn: DirDefn, child: FixedDir, value: Mapping[str, _CreatePath] | None) -> None:
     write_plan_exn(child, value)
 
 
@@ -158,7 +172,7 @@ def _write_matches_collection_exn(
         fields, payload = item
         held = fields if isinstance(fields, Captures) else captures(**fields)
         validate_capture_names_exn(defn, held.kwargs)
-        _write_formatted_exn(defn, format_any_exn(template, *held.args, **held.kwargs), payload)  # pyright: ignore[reportArgumentType]
+        _write_formatted_exn(defn, format_any_exn(template, *held.args, **held.kwargs), _create_path(payload))  # pyright: ignore[reportArgumentType]
 
 
 def _is_member(item: object) -> TypeIs[_Member]:
@@ -180,14 +194,14 @@ def _write_matches_named_exn(
     for name, body in value.items():
         if not (safe_name := safe(Raw[Name](name))) or node.select(safe_name) is None:
             raise ValueError(em.Create.member(key, name, filenames=name in names))
-        _write_formatted_exn(defn, plan_fixed_exn(child_path_exn(template.path, safe_name), defn), body)  # pyright: ignore[reportArgumentType]
+        _write_formatted_exn(defn, plan_fixed_exn(child_path_exn(template.path, safe_name), defn), _create_path(body))  # pyright: ignore[reportArgumentType]
 
 
 @dispatch
-def _write_formatted_exn(defn: File, created: FixedFile, payload: Puttable | PathIsh | None) -> None:  # pyright: ignore[reportRedeclaration]
+def _write_formatted_exn(defn: File, created: FixedFile, payload: Puttable | Path | None) -> None:  # pyright: ignore[reportRedeclaration]
     _ = created.create(payload)
 
 
 @dispatch
-def _write_formatted_exn(defn: DirDefn, created: FixedDir, payload: Mapping[str, CreateTop] | None) -> None:
+def _write_formatted_exn(defn: DirDefn, created: FixedDir, payload: Mapping[str, _CreatePath] | None) -> None:
     write_plan_exn(created, payload)

@@ -1,5 +1,6 @@
 """Mashumaro JSON conversion used by filesystem operations."""
 
+import warnings
 from dataclasses import is_dataclass
 from pathlib import Path
 from typing import TypeVar, cast
@@ -9,6 +10,9 @@ from typing_extensions import Protocol, runtime_checkable
 import fs_schema._errmsg as em
 
 from ._types import DataclassInstance
+
+# mashumaro still names typing.ByteString. Caller cannot fix it
+warnings.filterwarnings("ignore", message=r".*ByteString.*", category=DeprecationWarning, module=r"mashumaro")
 
 _T = TypeVar("_T")
 _T_co = TypeVar("_T_co", covariant=True)

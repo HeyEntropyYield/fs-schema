@@ -20,6 +20,7 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
   "Topic :: Software Development :: Libraries :: Python Modules",
   "Typing :: Typed",
 ]
@@ -27,7 +28,7 @@ classifiers = [
 dependencies = [
   "attrs>=24.1",
   "beartype>=0.19",
-  "parse",
+  "parse>=1.22.4",
   "plum-dispatch>=2",
   "typing-extensions>=4.10",
 ]
@@ -71,7 +72,7 @@ dev = [
 ]
 
 [tool.uv]
-required-version = ">=0.11.15,<0.13"
+required-version = ">=0.11.15,<0.14"
 default-groups = ["dev"]
 cache-keys = [{ file = "pyproject.toml" }, { git = { commit = true, tags = true } }]
 
@@ -85,7 +86,7 @@ publish-url = "https://test.pypi.org/legacy/"
 explicit = true
 
 [build-system]
-requires = ["uv_build>=0.11.15,<0.13"]
+requires = ["uv_build>=0.11.15,<0.14"]
 build-backend = "uv_build"
 
 [project.urls]
@@ -169,7 +170,15 @@ addopts = [
 ]
 strict = true
 filterwarnings = [
+  # error is the fallback. Later lines are checked first
+  # beartype: already ignored in fs_schema. pytest checks this list first
+  "error",
   "ignore::beartype.roar.BeartypeDecorHintPep613DeprecationWarning",
+  # JSON extra. mashumaro's ByteString deprecation, also ignored in _mashumaro_json
+  "ignore:.*ByteString.*:DeprecationWarning:mashumaro",
+  # dev only. library import path never loads these
+  "ignore:.*invalid escape sequence.*:SyntaxWarning:docopt",
+  "ignore:.*use of fork.*:DeprecationWarning:sh",
 ]
 
 [tool.coverage.run]
@@ -192,7 +201,7 @@ skip_covered = true
 # Local matrix: ./run.sh ci:tox -> tox run-parallel (CPU count). GHA stays one env per job.
 [tool.tox]
 requires = ["tox>=4.34", "tox-uv>=1.23"]
-env_list = ["3.10", "3.11", "3.12", "3.13", "3.14"]
+env_list = ["3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
 skip_missing_interpreters = true
 
 [tool.tox.env_run_base]
@@ -211,7 +220,7 @@ commands = [
   ["python", "-I", "-m", "pytest", { replace = "posargs", default = ["tests"], extend = true }],
 ]
 
-[tool.tox.env."3.14"]
+[tool.tox.env."3.15"]
 description = "pytest + coverage (newest)"
 commands = [
   ["python", "-I", "-m", "pytest", { replace = "posargs", default = ["tests"], extend = true }],

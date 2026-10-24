@@ -28,7 +28,7 @@ readonly UBUNTU_PIN
 # Pinned CI binaries beat distro copies (GHA ubuntu-24.04 apt shellcheck is 0.9).
 PATH="${HOME:-/tmp}/.local/bin:/usr/local/bin:$PATH"
 # Local tox/docker only. GHA matrix = package classifiers (baipp).
-readonly PYTHON_VERSIONS="3.10 3.11 3.12 3.13 3.14"
+readonly PYTHON_VERSIONS="3.10 3.11 3.12 3.13 3.14 3.15"
 
 _BRANCH="$(git -C "$ROOT_DIR" branch --show-current 2>/dev/null | tr '/' '-' ||:)"
 readonly _BRANCH

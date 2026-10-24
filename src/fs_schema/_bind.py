@@ -77,6 +77,7 @@ def _bound_dir_match_type(layout: DirLayout) -> type[DirMatch]:
 
 # Proved directory keys. Values stay iterdir entries so _listed can reject a name
 _FsCache: TypeAlias = dict[Path, CacheSeq[Path]]
+_SeqCache: TypeAlias = dict[Path, Sequence[Path]]  # plum boundary
 _MatchValue = TypeVar("_MatchValue", bound=Match)
 
 
@@ -214,7 +215,7 @@ def _bind_fixed(
 
 @dispatch
 def _bind_fixed_kind(  # pyright: ignore[reportRedeclaration]
-    path: Path, defn: File, cache: _FsCache, fast: bool = False, scope: CaptureMap | None = None
+    path: Path, defn: File, cache: _SeqCache, fast: bool = False, scope: CaptureMap | None = None
 ) -> FixedFile:
     path = SafePath(path)  # plum boundary
     return FixedFile(path, defn, scope=scope)
@@ -236,10 +237,10 @@ def _first_layout(
 
 @dispatch
 def _bind_fixed_kind(
-    path: Path, defn: DirDefn, cache: _FsCache, fast: bool = False, scope: CaptureMap | None = None
+    path: Path, defn: DirDefn, cache: _SeqCache, fast: bool = False, scope: CaptureMap | None = None
 ) -> FixedDir | MismatchErr:
     path = SafePath(path)  # plum boundary
-    if is_mismatch(chosen := _first_layout(path, defn.layouts, cache, fast=fast, scope=scope)):
+    if is_mismatch(chosen := _first_layout(path, defn.layouts, typing.cast(_FsCache, cache), fast=fast, scope=scope)):
         return chosen
     layout, children = chosen
     return (layout.child_type or FixedDir)(path, children, OneDefn(defn.defn, layout))
@@ -356,13 +357,13 @@ def _bind_matches(
 
 @dispatch
 def _bind_matches_kind(  # pyright: ignore[reportRedeclaration]
-    defn: File, listing: Sequence[Path], cache: _FsCache, fast: bool = False, scope: CaptureMap | None = None
+    defn: File, listing: Sequence[Path], cache: _SeqCache, fast: bool = False, scope: CaptureMap | None = None
 ) -> object:
     return _bind_file_matches(defn, listing, fast=fast, scope=scope)
 
 
 @dispatch
 def _bind_matches_kind(
-    defn: DirDefn, listing: Sequence[Path], cache: _FsCache, fast: bool = False, scope: CaptureMap | None = None
+    defn: DirDefn, listing: Sequence[Path], cache: _SeqCache, fast: bool = False, scope: CaptureMap | None = None
 ) -> _MatchRes[DirMatch]:
-    return _bind_dir_matches(defn, listing, cache, fast=fast, scope=scope)
+    return _bind_dir_matches(defn, listing, typing.cast(_FsCache, cache), fast=fast, scope=scope)
