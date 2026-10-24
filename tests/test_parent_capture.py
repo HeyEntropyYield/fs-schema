@@ -234,13 +234,10 @@ def test_repeat_edges(tmp_path: Path) -> None:
     (tmp_path / "glue-bind" / "101").mkdir(parents=True)
     assert list(raise_mismatch(Glued.bind(tmp_path / "glue-bind")).rows) == []
 
-    class Under(Schema):
-        schema = {Dir(alias="rows", fmt="{_n}_<_n>", min=0): {}}
+    with pytest.raises(ValueError, match=re.escape(em.Fmt.field("_n"))):
 
-    # parse only names a field that starts with a letter, so {_n} formats and does not bind
-    assert Under.relative_to(tmp_path / "under").rows.format(_n="ab").path.name == "ab_ab"
-    (tmp_path / "under-bind" / "ab_ab").mkdir(parents=True)
-    assert list(raise_mismatch(Under.bind(tmp_path / "under-bind")).rows) == []
+        class Under(Schema):  # pyright: ignore[reportUnusedClass]
+            schema = {Dir(alias="rows", fmt="{_n}_<_n>", min=0): {}}
 
     class Swapped(Schema):
         schema = {Dir(alias="rows", fmt="{ts:%m%d}_<ts:%d%m>", min=0): {}}

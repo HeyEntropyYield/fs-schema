@@ -101,7 +101,7 @@ Inline `{...}` -> private Schema with stable identity.
 `fmt` + `match` filters; captures stay from `fmt`.
 `match` alone: unnamed groups -> `args`, named -> `kwargs`. Optional groups -> `None`.
 
-Untyped format fields -> `str`. `:d` -> `int`. Datetime fields -> `datetime`.
+Untyped format fields -> `str`. `:d` -> `int`. Datetime fields -> `datetime`. A named field starts with a letter. A number is positional.
 
 ```python
 part_decl = fss.File(

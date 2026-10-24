@@ -18,7 +18,8 @@ _K = TypeVar("_K")
 # Regex optional groups can be absent; format fields cannot.
 CaptureField: TypeAlias = FmtFieldT | None
 _FORMATTER = Formatter()
-_FIELD_NAME: Final = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+# A named field starts with a letter. Digits are positional. parse uses the same cut
+_FIELD_NAME: Final = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
 # /< is a literal <. / is never a name character, so the escape is unambiguous
 REF: Final = re.compile(r"(?<!/)<([A-Za-z_][A-Za-z0-9_]*)(?::([^>]*))?>")
 

@@ -8,6 +8,8 @@ API by git tag. Signatures: [reference](https://heyentropyyield.github.io/fs-sch
 [Ancestor captures](https://heyentropyyield.github.io/fs-schema/reference/#ancestor-captures)
 [example](https://github.com/heyentropyyield/fs-schema/blob/master/examples/parent_capture.py)
 
+A named format field starts with a letter. A number is positional.
+
 `xor(...)` is an exclusive union. One branch binds, first success.
 Unnamed branches promote their children onto the xor. A keyword keeps them behind that branch.
 Create through a child or a branch. Bind returns the winning schema.
