@@ -63,6 +63,7 @@ class Node:
     DOT_MATCH: Final = _cannot("Dir('.')", "take match")
     NEEDS: Final = _requires("declaration", "name, fmt, or match")
     NAME_FMT: Final = _cannot("name", "be combined with fmt")
+    NAME_FIELD: Final = "name contains a format field; put the pattern on fmt"
     MIN: Final = _must_be("min", "at least zero")
     EXACT_MIN: Final = _must_be("exact-name min", "0 or 1")
     EXACT_MAX: Final = _must_be("exact-name max", "omitted or 1")
