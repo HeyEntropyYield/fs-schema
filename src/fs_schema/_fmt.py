@@ -2,7 +2,7 @@
 
 import re
 from collections.abc import Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from string import Formatter
 from typing import Final, TypeAlias, TypeVar, final
@@ -44,23 +44,18 @@ def dt(pattern: str, name: str = "ts") -> Raw[FmtStr]:
 ## Intl Types
 
 
+@dataclass(frozen=True, slots=True, eq=False)
 class CaptureMap(Mapping[str, CaptureField]):
     """Keys are field names, not basenames. Values are field values. A parent is the ancestor frame"""
 
-    __slots__: Final = ("_parent", "_specs", "_values")
-    _values: dict[str, CaptureField]
-    _specs: FieldSpecs
-    _parent: "CaptureMap | None"
+    # eq stays Mapping's (dict unhashable, parent frame not part of eq)
+    _values: Mapping[str, CaptureField]
+    _specs: FieldSpecs = field(default_factory=dict)
+    _parent: "CaptureMap | None" = None
 
-    def __init__(
-        self,
-        values: Mapping[str, CaptureField],
-        specs: FieldSpecs | None = None,
-        parent: "CaptureMap | None" = None,
-    ) -> None:
-        self._values = dict(values)
-        self._specs = dict(specs or {})
-        self._parent = parent
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "_values", dict(self._values))  # caller's dict mustn't alias this
+        object.__setattr__(self, "_specs", dict(self._specs))
 
     @override
     def __getitem__(self, key: str) -> CaptureField:

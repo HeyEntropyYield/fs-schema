@@ -131,45 +131,24 @@ class File(Node, Generic[_L_co]):
     if TYPE_CHECKING:
 
         @overload
-        def __init__(
-            self,
-            name: str,
-            *,
-            alias: str | None = None,
-            match: str | None = None,
-            optional: bool = False,
-            schema: LoadSpec[_L_co] | None = None,
-        ) -> None: ...
+        def __init__(self,
+            name: str, *, optional: bool = False, match: str | None = None,
+            alias: str | None = None, schema: LoadSpec[_L_co] | None = None,
+        ) -> None: ...  # fmt: skip
 
         @overload
-        def __init__(
-            self,
-            *,
-            fmt: str,
-            match: str | None = None,
-            min: int = 1,
-            max: int | None = None,
-            alias: str | None = None,
-            sort: SortFn | None = None,
-            sort_rev: bool = False,
-            skip_mismatch: bool = False,
-            schema: LoadSpec[_L_co] | None = None,
-        ) -> None: ...
+        def __init__(self, *,
+            fmt: str, min: int = 1, max: int | None = None, match: str | None = None,
+            sort: SortFn | None = None, sort_rev: bool = False, skip_mismatch: bool = False,
+            alias: str | None = None, schema: LoadSpec[_L_co] | None = None,
+        ) -> None: ...  # fmt: skip
 
         @overload
-        def __init__(
-            self,
-            *,
-            match: str,
-            fmt: None = None,
-            min: int = 1,
-            max: int | None = None,
-            alias: str | None = None,
-            sort: SortFn | None = None,
-            sort_rev: bool = False,
-            skip_mismatch: bool = False,
-            schema: LoadSpec[_L_co] | None = None,
-        ) -> None: ...
+        def __init__(self, *,
+            match: str, fmt: None = None, min: int = 1, max: int | None = None,
+            sort: SortFn | None = None, sort_rev: bool = False, skip_mismatch: bool = False,
+            alias: str | None = None, schema: LoadSpec[_L_co] | None = None,
+        ) -> None: ...  # fmt: skip
 
         def __init__(self, *args: object, **kwargs: object) -> None: ...  # pyright: ignore[reportMissingSuperCall]
 
@@ -182,45 +161,24 @@ class Dir(Node, Generic[_D_co]):
     if TYPE_CHECKING:
 
         @overload
-        def __init__(
-            self,
-            name: str,
-            *,
-            alias: str | None = None,
-            match: str | None = None,
-            optional: bool = False,
-            schema: type[_D_co] | None = None,
-        ) -> None: ...
+        def __init__(self,
+            name: str, *, optional: bool = False, match: str | None = None,
+            alias: str | None = None, schema: type[_D_co] | None = None,
+        ) -> None: ...  # fmt: skip
 
         @overload
-        def __init__(
-            self,
-            *,
-            fmt: str,
-            match: str | None = None,
-            min: int = 1,
-            max: int | None = None,
-            alias: str | None = None,
-            sort: SortFn | None = None,
-            sort_rev: bool = False,
-            skip_mismatch: bool = False,
-            schema: type[_D_co] | None = None,
-        ) -> None: ...
+        def __init__(self, *,
+            fmt: str, min: int = 1, max: int | None = None, match: str | None = None,
+            sort: SortFn | None = None, sort_rev: bool = False, skip_mismatch: bool = False,
+            alias: str | None = None, schema: type[_D_co] | None = None,
+        ) -> None: ...  # fmt: skip
 
         @overload
-        def __init__(
-            self,
-            *,
-            match: str,
-            fmt: None = None,
-            min: int = 1,
-            max: int | None = None,
-            alias: str | None = None,
-            sort: SortFn | None = None,
-            sort_rev: bool = False,
-            skip_mismatch: bool = False,
-            schema: type[_D_co] | None = None,
-        ) -> None: ...
+        def __init__(self, *,
+            match: str, fmt: None = None, min: int = 1, max: int | None = None,
+            sort: SortFn | None = None, sort_rev: bool = False, skip_mismatch: bool = False,
+            alias: str | None = None, schema: type[_D_co] | None = None,
+        ) -> None: ...  # fmt: skip
 
         def __init__(self, *args: object, **kwargs: object) -> None: ...  # pyright: ignore[reportMissingSuperCall]
 

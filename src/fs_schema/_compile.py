@@ -175,14 +175,8 @@ def _defn_satisfies(actual: Defn, required: Defn) -> bool:
 
 
 def _compile_inline_schema_exn(
-    class_name: str,
-    module: str,
-    position: int,
-    layout: dict[object, object],
-    scope: FieldSpecs,
-    *,
-    part: int | None = None,
-) -> type[Schema]:
+    class_name: str, module: str, position: int, layout: dict[object, object], scope: FieldSpecs, *, part: int | None = None,
+) -> type[Schema]:  # fmt: skip
     label = f"{position}" if part is None else f"{position}_{part}"
     generated = type(
         f"_{class_name}Child{label}",
@@ -195,13 +189,8 @@ def _compile_inline_schema_exn(
 
 
 def _layout_from_schema_exn(
-    class_name: str,
-    key: object,
-    node: Dir[Schema],
-    child_type: type[Schema],
-    *,
-    name: str | None = None,
-) -> DirLayout:
+    class_name: str, key: object, node: Dir[Schema], child_type: type[Schema], *, name: str | None = None,
+) -> DirLayout:  # fmt: skip
     child_root = schema_defn_for(child_type)
     layout = DirLayout(child_root.defns, child_type, name)
     if node.schema is not None:
@@ -212,16 +201,9 @@ def _layout_from_schema_exn(
 
 
 def _dir_defn_exn(
-    class_name: str,
-    module: str,
-    key: object,
-    node: Dir[Schema],
-    entries: Sequence[tuple[str | None, object]],
-    scope: FieldSpecs,
-    *,
-    origin: int,
-    warn: bool,
-) -> DirDefn:
+    class_name: str, module: str, key: object, node: Dir[Schema], entries: Sequence[tuple[str | None, object]], scope: FieldSpecs,
+    *, origin: int, warn: bool,
+) -> DirDefn:  # fmt: skip
     # A sequence is entries of (None, item). xor.entries already carries the branch name
     layouts: list[DirLayout] = []
     child_scope = _extended(scope, node)

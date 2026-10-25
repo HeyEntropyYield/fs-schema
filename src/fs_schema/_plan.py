@@ -71,9 +71,7 @@ def _plan_fixed_exn(path: Path, defn: DirDefn, scope: CaptureMap | None = None) 
 
 
 def format_any_exn(
-    template: Template[Match, Defn],
-    *args: FmtFieldT,
-    **kwargs: FmtFieldT,
+    template: Template[Match, Defn], *args: FmtFieldT, **kwargs: FmtFieldT
 ) -> FixedFile[object] | FixedDir | XorDir:
     for name, value in kwargs.items():
         if name in template.fmt_fields and template.fmt_fields[name] != value:

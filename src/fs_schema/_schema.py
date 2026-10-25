@@ -68,7 +68,6 @@ from ._types import (
     PathIsh,
     Puttable,
     Raw,
-    Safe,
     SafePath,
 )
 
@@ -133,8 +132,9 @@ class _Fixed:
         return self.path < path
 
     @property
-    def name(self) -> Safe[Name]:
-        return path_name_exn(self.path)  # caller error
+    def name(self) -> str:
+        # Exact str for callers. path_name_exn stays Safe for select and close
+        return str(path_name_exn(self.path))
 
     @property
     def stem(self) -> str:
@@ -242,14 +242,8 @@ class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
     scope: CaptureMap | None
 
     def __init__(
-        self,
-        path: PathIsh,
-        matches: Sequence[_M_co],
-        defn: _Defn_co,
-        fmt_fields: FmtFields | None = None,
-        *,
-        scope: CaptureMap | None = None,
-    ) -> None:
+        self, path: PathIsh, matches: Sequence[_M_co], defn: _Defn_co, fmt_fields: FmtFields | None = None, *, scope: CaptureMap | None = None,
+    ) -> None:  # fmt: skip
         self.path = safe_path_exn(Path(path))  # caller error
         self._matches = tuple(matches)
         self.defn = defn
@@ -274,13 +268,8 @@ class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
         return len(self._matches)
 
     def filter(self, predicate: CapturePredicate, /) -> Self:
-        return type(self)(
-            self.path,
-            tuple(match for match in self._matches if predicate(match.args, match.kwargs)),
-            self.defn,
-            self.fmt_fields,
-            scope=self.scope,
-        )
+        matches = tuple(match for match in self._matches if predicate(match.args, match.kwargs))
+        return type(self)(self.path, matches, self.defn, self.fmt_fields, scope=self.scope)
 
     def find(self, predicate: CapturePredicate, /) -> _M_co | None:
         return next((match for match in self._matches if predicate(match.args, match.kwargs)), None)
@@ -340,11 +329,8 @@ class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
 
 
 def _matches_where_captures(
-    captured_args: tuple[CaptureField, ...],
-    captured_kwargs: CaptureMap,
-    args: tuple[CaptureField, ...],
-    kwargs: Mapping[str, CaptureField],
-) -> bool:
+    captured_args: tuple[CaptureField, ...], captured_kwargs: CaptureMap, args: tuple[CaptureField, ...], kwargs: Mapping[str, CaptureField],
+) -> bool:  # fmt: skip
     if len(args) > len(captured_args):
         return False
     if any(expected is not None and actual != expected for actual, expected in zip(captured_args, args, strict=False)):
@@ -476,12 +462,8 @@ class FixedDir(_Fixed):
     defn: OneDefn
 
     def __init__(
-        self,
-        path: PathIsh,
-        children: Sequence[BoundChild],
-        defn: OneDefn,
-        fmt_fields: FmtFields | None = None,
-    ) -> None:
+        self, path: PathIsh, children: Sequence[BoundChild], defn: OneDefn, fmt_fields: FmtFields | None = None,
+    ) -> None:  # fmt: skip
         _Fixed.__init__(self, path)
         self._children = tuple(children)
         self._lookup = defn.layout.lookup

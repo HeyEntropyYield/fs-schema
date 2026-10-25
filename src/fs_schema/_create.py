@@ -163,10 +163,7 @@ def _write_matches_fmt_file_exn(template: Matches[Match, Defn], defn: File[objec
 
 
 def _write_matches_collection_exn(
-    template: Template[Match, Defn],
-    defn: Defn,
-    key: str,
-    pairs: Sequence[_Member],
+    template: Template[Match, Defn], defn: Defn, key: str, pairs: Sequence[_Member]
 ) -> None:
     for item in pairs:
         fields, payload = item
@@ -184,10 +181,7 @@ def _is_member(item: object) -> TypeIs[_Member]:
 
 
 def _write_matches_named_exn(
-    template: Matches[Match, Defn],
-    defn: Defn,
-    key: str,
-    value: Mapping[str, CreateTop],
+    template: Matches[Match, Defn], defn: Defn, key: str, value: Mapping[str, CreateTop]
 ) -> None:
     names = capture_names(defn)
     node = defn_node(defn)
