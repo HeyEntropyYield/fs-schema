@@ -6,10 +6,22 @@ import pytest
 import sh
 from scripts import release
 
+import fs_schema
+
 setattr(_pytest_scope, "_ScopeName", str)  # noqa: B010  pytest-params 0.3.0, removed in pytest 9
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 git_root = sh.git.bake(_tty_out=False, _cwd=str(PROJECT_ROOT))
+
+
+def refuse_foreign_install(installed: Path, this_src: Path) -> None:
+    # Editable install lives in src/fs_schema. A wheel does not
+    package = installed.parent
+    if package.name == "fs_schema" and package.parent.name == "src" and package != this_src:
+        raise pytest.UsageError(f"fs_schema loaded from {package}, this checkout is {this_src}")
+
+
+refuse_foreign_install(Path(fs_schema.__file__).resolve(), PROJECT_ROOT / "src" / "fs_schema")
 
 
 @pytest.fixture

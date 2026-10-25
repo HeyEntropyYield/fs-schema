@@ -12,6 +12,8 @@ A named format field starts with a letter. A number is positional.
 
 Python 3.15. `%d` without a year needs parse 1.22.4.
 
+`parse` on a formatted directory feeds that name's captures to the child, same as `format`.
+
 `xor(...)` is an exclusive union. One branch binds, first success.
 Unnamed branches promote their children onto the xor. A keyword keeps them behind that branch.
 Create through a child or a branch. Bind returns the winning schema.

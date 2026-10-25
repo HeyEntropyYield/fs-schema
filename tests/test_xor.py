@@ -2,6 +2,7 @@
 # pyright: reportAttributeAccessIssue=false, reportIndexIssue=false, reportUnknownVariableType=false
 import re
 from collections import UserList
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -343,3 +344,21 @@ def test_xor_fast_still_tries_the_next_arm(tmp_path: Path) -> None:
     assert not is_mismatch(bound)
     hit = bound.items[0]
     assert isinstance(hit, Payload)
+
+
+def test_parse_passes_directory_captures_to_the_child(tmp_path: Path) -> None:
+    class Box(Schema):
+        schema = {
+            Dir(alias="runs", fmt="{stamp:%Y%m%d_%H%M%S}", min=0): xor(
+                letter={"nested": {"body": "<stamp>.txt"}},
+                other={"note": "<stamp>.txt"},
+            ),
+        }
+
+    when = datetime(2026, 8, 21, 2, 51, 54)
+    name = "20260821_025154"
+    planned = Box.relative_to(tmp_path)
+    _ = planned.runs.format(stamp=when).letter.create(nested={"body": "x\n"})
+    parsed = planned.runs.parse(tmp_path / name)
+    assert parsed.path.name == name
+    assert parsed.letter.nested.body.path.name == f"{name}.txt"

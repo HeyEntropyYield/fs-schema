@@ -330,9 +330,13 @@ class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
         from ._plan import plan_fixed_exn
 
         basename = Path(source).name
-        if not (name := safe(Raw[Name](basename))) or defn_node(self.defn).select(name) is None:
+        node = defn_node(self.defn)
+        if not (name := safe(Raw[Name](basename))) or (held := node.select(name)) is None:
             raise ValueError(em.Parse.member(basename))
-        return plan_fixed_exn(child_path_exn(self.path, name), self.defn)  # chaining
+        child = child_path_exn(self.path, name)
+        if isinstance(self.defn, File):
+            return plan_fixed_exn(child, self.defn)
+        return plan_fixed_exn(child, self.defn, held.kwargs.chain(self.scope))
 
 
 def _matches_where_captures(

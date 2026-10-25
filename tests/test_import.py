@@ -3,6 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from beartype.roar import BeartypeClawDecorWarning
 
 import fs_schema
@@ -142,3 +143,13 @@ def test_ordinary_import_installs_package_hook_before_api_modules() -> None:
         text=True,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_suite_refuses_another_checkouts_install(tmp_path: Path) -> None:
+    from tests.conftest import refuse_foreign_install
+
+    this = tmp_path / "src" / "fs_schema"
+    with pytest.raises(pytest.UsageError, match="loaded from"):
+        refuse_foreign_install(tmp_path / "other" / "src" / "fs_schema" / "__init__.py", this)
+    refuse_foreign_install(this / "__init__.py", this)
+    refuse_foreign_install(tmp_path / "site-packages" / "fs_schema" / "__init__.py", this)
