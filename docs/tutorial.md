@@ -377,6 +377,34 @@ def publish_letter(root: Path) -> str:
 
 `publish_note` writes `body` and `stamp` on the xor, because those branches have no names. `publish_letter` writes through `.letter`. Bind returns a `Letter` here. `bound.slot.body` is that letter. `.letter` is not on the bound value.
 
+## A named class and the directory capture
+
+```python
+from datetime import datetime
+
+
+class Log(fss.Schema):
+    capture_refs = True
+    schema = {"body": "<ts>.log"}
+
+
+class Day(fss.Schema):
+    capture_refs = True
+    schema = {"log": Log}
+
+
+class Shelf(fss.Schema):
+    schema = {fss.Dir(alias="days", fmt=fss.dt("%Y%m%d"), min=0): Day}
+
+
+def publish_log(root: Path, when: datetime) -> None:
+    Shelf.relative_to(root).days.format(ts=when).log.body.create("hello\n")
+```
+
+`Log` has `<ts>` unbound. `Day` does not declare `ts`, so `Day` sets `capture_refs` too. `publish_log` writes through `Shelf`, whose directory has `ts`.
+
+[Example](https://github.com/heyentropyyield/fs-schema/blob/master/examples/capture_refs.py)
+
 ## What these calls do not promise
 
 `relative_to` and `format` only plan paths. `create` and `put` write. `put` replaces one file atomically and creates missing parents. `create` can leave a partial tree if a later write fails. `bind` checks names and shape. `load` checks file contents.

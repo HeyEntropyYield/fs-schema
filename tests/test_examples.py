@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+import capture_refs
 import data_delivery_after
 import data_delivery_before
 import fs_schema as fss
@@ -23,6 +24,7 @@ def test_examples_import(tmp_path: Path) -> None:
     symlink_copy.main()
     xor_directory.main()
     parent_capture.main()
+    capture_refs.main()
 
 
 def _stage_download(target: Path, *, parts: int, expected: int) -> None:

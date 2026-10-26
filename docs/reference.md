@@ -364,7 +364,7 @@ lookup for names such as `"items"` that collide with mapping methods.
 | `where(*args, **kwargs)` | Matches whose captures have the positional prefix and named subset |
 | `get(index=0, default=...)` | Safely indexed match, or the supplied default when out of range |
 | `format(*args, **kwargs)` | Planned fixed file or recursively navigable fixed directory (format-backed collections only) |
-| `parse(source)` | Planned member named by `Path(source).name`. `source` may be a basename, a path, or any `__fspath__` value |
+| `parse(source)` | Planned member named by `Path(source).name`. A formatted directory passes that name's captures to the child, same as `format`. A file parse does not. `source` may be a basename, a path, or any `__fspath__` value |
 
 ```python
 days.where(day=datetime(2026, 9, 10))  # every named constraint
@@ -377,8 +377,6 @@ days.get()  # first match, or None
 days.get(-1, default=latest_day)  # negative index; that default, including None
 _ = days[9]  # IndexError
 ```
-
-`days.where(ts=when)` keeps every sibling or none when `ts` is an ancestor in scope.
 
 ```python
 def is_selected_day(args, kwargs):
@@ -599,7 +597,7 @@ Raise an issue if one of these is a problem.
 
 ## Ancestor captures
 
-A nested dict sees the ancestor. A named class does not. Closest wins. `<ts:spec>` overrides when both specs are the same type.
+A nested dict sees the ancestor. A named class does not, unless it sets `capture_refs = True`. Closest wins. `<ts:spec>` overrides when both specs are the same type.
 
 `<n>` on the same fmt as `{n}` is that field again. The name matches when the values are equal. `<n:02d>` is a second way to write it, so `1_01` and `1_1` are both `n=1`. A different type is a declaration error.
 
@@ -622,6 +620,25 @@ def write_run(root: Path, when: datetime) -> None:
 ```
 
 [Example](https://github.com/heyentropyyield/fs-schema/blob/master/examples/parent_capture.py)
+
+```python
+class Log(fss.Schema):
+    capture_refs = True
+    schema = {"body": "<ts>.log"}
+
+
+class Day(fss.Schema):
+    capture_refs = True
+    schema = {"log": Log}
+
+
+class Shelf(fss.Schema):
+    schema = {fss.Dir(alias="days", fmt=fss.dt("%Y%m%d"), min=0): Day}
+```
+
+`Log` has `<ts>` unbound. `Day` does not declare `ts`, so `Day` sets `capture_refs` too. `Shelf` installs `Day` on a directory that has `ts`.
+
+[Example](https://github.com/heyentropyyield/fs-schema/blob/master/examples/capture_refs.py)
 
 ## xor
 
@@ -678,7 +695,5 @@ def publish_letter(root: Path) -> str:
     _ = Box.bind(root, fast=True)  # still tries every branch
     return bound.slot.body.read_text()  # .letter is not on the bound value
 ```
-
-`planned.slot.rows` warns, and reading it raises. `planned.slot.create()` on the union raises. A directory whose name matched, but no branch bound, is `MismatchErr`. `skip_mismatch` drops it.
 
 [Example](https://github.com/heyentropyyield/fs-schema/blob/master/examples/xor_directory.py)

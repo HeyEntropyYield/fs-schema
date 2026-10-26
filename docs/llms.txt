@@ -11,7 +11,7 @@ Core state model:
 - `Schema.bind(path, *, fast=False)`: validate existing tree; returns schema or one `MismatchErr`. Several problems are one line each. `fast=True` stops at the first.
 - `Schema.relative_to(path)`: planned paths; returns `SchemaRoot[Schema]`.
 - `SchemaRoot.bind()`: validate written tree and return schema.
-- `File`, `Dir`, `FILES`, `xor`: layout declaration. Exact names take `optional`. `Parent.child.with_` in a `FILES` list changes that child on a subclass. Collections take `fmt`, `match`, `min`, `max`, `sort`. `<name>` is an ancestor capture. A nested dict sees it. A named class does not. On that same fmt, `<name>` next to `{name}` is the field again. `xor` is an exclusive union: one branch binds. Unnamed children sit on the xor. A keyword keeps them behind that name. `Schema.warn = False` silences warnings from that class.
+- `File`, `Dir`, `FILES`, `xor`: layout declaration. Exact names take `optional`. `Parent.child.with_` in a `FILES` list changes that child on a subclass. Collections take `fmt`, `match`, `min`, `max`, `sort`. `<name>` is an ancestor capture. A nested dict sees it. A named class sees it when `capture_refs = True`. A class that only holds that child sets the flag too. The directory is what has the field. On that same fmt, `<name>` next to `{name}` is the field again. `xor` is an exclusive union: one branch binds. Unnamed children sit on the xor. A keyword keeps them behind that name. `parse` on a formatted directory passes that name's captures, same as `format`. `Schema.warn = False` silences warnings from that class.
 - Attribute/index access: generated, schema-aware traversal.
 - `Match.args`, `Match.kwargs`, `filter`, `find`, `where`, `get`: collection queries and captured-value access.
 - `put`, `create`, `load`, `raise_exn`, `path`: filesystem I/O. Node writes are `create`. `fss.put` writes a temp file and replaces. `copy_to(follow_symlinks=True)` copies a link to a directory as a directory.
@@ -31,6 +31,7 @@ rooted write destinations not yet validated.
 
 - [Quickstart](https://github.com/HeyEntropyYield/fs-schema/blob/master/examples/quickstart.py): Compact declaration, binding, access, output formatting, and writing.
 - [Ancestor captures](https://github.com/HeyEntropyYield/fs-schema/blob/master/examples/parent_capture.py): `<name>` reuses an ancestor capture inside one declaration, and repeats that field when it sits next to `{name}`.
+- [Named class captures](https://github.com/HeyEntropyYield/fs-schema/blob/master/examples/capture_refs.py): `capture_refs = True` lets a named class take `<name>` from the directory that installs it.
 - [Before fs-schema](https://github.com/HeyEntropyYield/fs-schema/blob/master/examples/data_delivery_before.py): Path-only pipeline with layout contract in prose.
 - [After fs-schema](https://github.com/HeyEntropyYield/fs-schema/blob/master/examples/data_delivery_after.py): Same pipeline with filesystem state types.
 - [Public API source](https://github.com/HeyEntropyYield/fs-schema/blob/master/src/fs_schema/__init__.py): Explicit public API facade.

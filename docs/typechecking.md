@@ -68,6 +68,20 @@ basedpyright gives no diagnostic for any of these. The code typechecks, and the 
 
 When you need the real type, annotate that one name where you use it. You could also write out a type for every child on the class, but that repeats the layout, and the package does not ask you to do it.
 
+### `bind`
+
+`if not (got := Schema.bind(path))` narrows. The falsy branch is `MismatchErr`. The truthy branch is the schema. `raise_mismatch` raises instead.
+
+```python
+from pathlib import Path
+
+
+def narrow_bind(root: Path) -> Path:
+    if not (got := Annotated.bind(root)):
+        raise got
+    return got.path
+```
+
 ### Loading
 
 `load()` on a child is `object | Exception` until you name the model. With no annotation, that is as specific as the type gets: the file's model is not on the child type. An ignore on `load` itself would not change the caller's error.

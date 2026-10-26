@@ -2,11 +2,12 @@
 
 API by git tag. Signatures: [reference](https://heyentropyyield.github.io/fs-schema/reference/).
 
-## Unreleased
+## v0.8.0
 
-`<name>` is an ancestor capture in the same declaration. A nested dict sees it. A named class does not. On that same fmt, `<name>` next to `{name}` is the field again. The values must be equal, and a different spec is allowed when the type matches. `/<` is a literal `<`.
+`<name>` is an ancestor capture in the same declaration. A nested dict sees it. A named class does not, unless it sets `capture_refs = True`. An inline dict under that class keeps the flag. A class without the flag still fails at its class statement. On that same fmt, `<name>` next to `{name}` is the field again. The values must be equal, and a different spec is allowed when the type matches. `/<` is a literal `<`.
 [Ancestor captures](https://heyentropyyield.github.io/fs-schema/reference/#ancestor-captures)
 [example](https://github.com/heyentropyyield/fs-schema/blob/master/examples/parent_capture.py)
+[named class](https://github.com/heyentropyyield/fs-schema/blob/master/examples/capture_refs.py)
 
 A named format field starts with a letter. A number is positional.
 
@@ -14,11 +15,10 @@ Python 3.15. `%d` without a year needs parse 1.22.4.
 
 `parse` on a formatted directory feeds that name's captures to the child, same as `format`.
 
-A bound xor collection's branch is that branch's matches. `get` reads one. `format` and `parse` stay on the collection.
-
 `xor(...)` is an exclusive union. One branch binds, first success.
 Unnamed branches promote their children onto the xor. A keyword keeps them behind that branch.
 Create through a child or a branch. Bind returns the winning schema.
+After bind, a formatted directory's branch name is that branch's matches.
 [xor](https://heyentropyyield.github.io/fs-schema/reference/#xor)
 [example](https://github.com/heyentropyyield/fs-schema/blob/master/examples/xor_directory.py)
 

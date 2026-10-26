@@ -197,11 +197,13 @@ def _compile_inline_schema_exn(
     cls: type[Schema], position: int, layout: dict[object, object], scope: FieldSpecs, *, part: int | None = None,
 ) -> type[Schema]:  # fmt: skip
     label = f"{position}" if part is None else f"{position}_{part}"
-    generated = type(
-        f"_{cls.__name__}Child{label}",
-        (Schema,),
-        {"__module__": cls.__module__, "schema": layout, INLINE: True, CAPTURE_SCOPE: dict(scope)},
-    )
+    generated = type(f"_{cls.__name__}Child{label}", (Schema,), {
+        "__module__": cls.__module__,
+        "schema": layout,
+        INLINE: True,
+        CAPTURE_SCOPE: dict(scope),
+        "capture_refs": cls.capture_refs,  # unbound ref on this dict is recorded, same as on the caller
+    })  # fmt: skip
     if not is_schema_type(generated):
         raise AssertionError("generated Schema child has an invalid type")
     return generated
@@ -381,7 +383,7 @@ def schema_ctor_compile_defn(cls: type[Schema]) -> Exception | None:
         local_defns = _compile_local_defns_exn(cls, scope)  # Uses File/Dir (Node), which fails fast
         _ = DirLayout(local_defns)
         defns = _merge_defns_exn(schema_defn_for(base).defns, local_defns)
-        # Inherited defs are not compiled again. Their owed refs use the same rule
+        # Inherited defs are not compiled again. Unbound refs on the base use the same rule
         for ref_name, ref_spec in base._unbound_refs.items():
             _check_assign_ref_exn(cls, cls.__name__, ref_name, ref_spec, scope)
         type.__setattr__(cls, "_schema_defn", DirLayout(defns))

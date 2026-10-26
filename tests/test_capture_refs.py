@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from fs_schema import Dir, Schema, dt, raise_mismatch
+from fs_schema import Dir, File, Schema, dt, raise_mismatch
 from fs_schema import _errmsg as em
 
 WHEN = datetime(1970, 1, 1)
@@ -162,6 +162,43 @@ def test_explicit_empty_spec_must_match_the_container_field() -> None:
 
         class BadEmpty(Schema):  # pyright: ignore[reportUnusedClass]
             schema = {Dir(alias="runs", fmt=dt("%Y%m%d"), min=0): TextLog}
+
+
+def test_inline_dict_records_an_unbound_ref(tmp_path: Path) -> None:
+    class Log(Schema):
+        capture_refs = True
+        schema = {
+            "extra": {
+                "mark": File("mark.txt", optional=True),
+                "note": "<ts>.txt",
+            },
+        }
+
+    assert Log._unbound_refs == {"ts": None}
+    with pytest.raises(TypeError, match=re.escape(em.Schema.Body.unbound("ts"))):
+
+        class Plain(Schema):  # pyright: ignore[reportUnusedClass]
+            schema = {"kept": Log}
+
+    class Roll(Schema):
+        schema = {Dir(alias="runs", fmt=dt("%Y%m%d"), min=0): Log}
+
+    planned = Roll.relative_to(tmp_path).runs.format(ts=WHEN)
+    assert planned.extra.note.path.name == f"{STAMP}.txt"
+    planned.extra.note.create("n\n")
+    assert (tmp_path / STAMP / "extra" / f"{STAMP}.txt").read_text() == "n\n"
+
+    parsed_root = tmp_path / "parsed"
+    (parsed_root / STAMP).mkdir(parents=True)
+    parsed = Roll.relative_to(parsed_root).runs.parse(STAMP)
+    assert parsed.extra.note.path.name == f"{STAMP}.txt"
+
+    live = tmp_path / "live" / STAMP / "extra"
+    live.mkdir(parents=True)
+    (live / f"{STAMP}.txt").write_text("q\n")
+    bound = raise_mismatch(Roll.bind(tmp_path / "live"))
+    assert bound.runs[0].extra.note.read_text() == "q\n"
+    assert bound.runs[0].extra.note.path.name == f"{STAMP}.txt"
 
 
 def test_member_planned_alone_has_no_container_scope(tmp_path: Path) -> None:
