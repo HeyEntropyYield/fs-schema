@@ -1,6 +1,7 @@
 import os
 import typing
 from collections.abc import Callable, Iterator, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
@@ -229,27 +230,23 @@ class FileMatch(_CaptureState, FixedFile[_L_co], Generic[_L_co]):
         self._captures: ParsedCaptures = captures
 
 
-class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
-    alias: ClassVar[str | None]
-    fmt: ClassVar[Open[FmtStr] | None]
-    match: ClassVar[Raw[MatchPat] | None]
-    min: ClassVar[int]
-    max: ClassVar[int | None]
+class _MatchSeq(Sequence[_M_co], Generic[_M_co]):
     path: SafePath
-    _matches: tuple[_M_co, ...]
-    defn: _Defn_co
-    fmt_fields: FmtFields
     scope: CaptureMap | None
+    _matches: tuple[_M_co, ...]
+    _names: frozenset[str]
 
     def __init__(
-        self, path: PathIsh, matches: Sequence[_M_co], defn: _Defn_co, fmt_fields: FmtFields | None = None, *, scope: CaptureMap | None = None,
+        self, path: SafePath, matches: Sequence[_M_co], names: frozenset[str], *, scope: CaptureMap | None,
     ) -> None:  # fmt: skip
-        self.path = safe_path_exn(Path(path))  # caller error
-        self._matches = tuple(matches)
-        self.defn = defn
-        self.fmt_fields = dict(fmt_fields or {})
+        self.path = path
         # where() walks this frame. A slice is a new collection, so the frame is an argument
         self.scope = scope
+        self._matches = tuple(matches)
+        self._names = names
+
+    def _with_matches(self, matches: Sequence[_M_co]) -> Self:
+        return type(self)(self.path, matches, self._names, scope=self.scope)
 
     @overload
     def __getitem__(self, index: int) -> _M_co: ...
@@ -260,7 +257,7 @@ class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
     @override
     def __getitem__(self, index: int | slice) -> _M_co | Self:
         if isinstance(index, slice):
-            return type(self)(self.path, self._matches[index], self.defn, self.fmt_fields, scope=self.scope)
+            return self._with_matches(self._matches[index])
         return self._matches[index]
 
     @override
@@ -268,17 +265,15 @@ class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
         return len(self._matches)
 
     def filter(self, predicate: CapturePredicate, /) -> Self:
-        matches = tuple(match for match in self._matches if predicate(match.args, match.kwargs))
-        return type(self)(self.path, matches, self.defn, self.fmt_fields, scope=self.scope)
+        return self._with_matches(tuple(m for m in self._matches if predicate(m.args, m.kwargs)))
 
     def find(self, predicate: CapturePredicate, /) -> _M_co | None:
-        return next((match for match in self._matches if predicate(match.args, match.kwargs)), None)
+        return next((m for m in self._matches if predicate(m.args, m.kwargs)), None)
 
     def where(self, *args: CaptureField, **kwargs: CaptureField) -> Self:
         """Exception: raises to support chaining"""
-        names = capture_names(self.defn)
         for name in kwargs:
-            if name not in names and (self.scope is None or name not in self.scope):
+            if name not in self._names and (self.scope is None or name not in self.scope):
                 raise KeyError(name)
         return self.filter(
             lambda captured_args, captured_kwargs: _matches_where_captures(captured_args, captured_kwargs, args, kwargs)
@@ -307,6 +302,43 @@ class Matches(Sequence[_M_co], Generic[_M_co, _Defn_co]):
 
     def __next__(self) -> _M_co:
         return next(iter(self))
+
+
+@final
+class _XorMatches(_MatchSeq[_M_co], Generic[_M_co]):
+    """Winners of one xor branch. format and parse stay on the parent collection"""
+
+
+class Matches(_MatchSeq[_M_co], Generic[_M_co, _Defn_co]):
+    alias: ClassVar[str | None]
+    fmt: ClassVar[Open[FmtStr] | None]
+    match: ClassVar[Raw[MatchPat] | None]
+    min: ClassVar[int]
+    max: ClassVar[int | None]
+    # The generated view assigns this. Lookup finds it, so __getattr__ does not
+    with_: ClassVar[object]
+    defn: _Defn_co
+    fmt_fields: FmtFields
+
+    def __init__(
+        self, path: PathIsh, matches: Sequence[_M_co], defn: _Defn_co, fmt_fields: FmtFields | None = None, *, scope: CaptureMap | None = None,
+    ) -> None:  # fmt: skip
+        super().__init__(safe_path_exn(Path(path)), matches, capture_names(defn), scope=scope)  # caller error
+        self.defn = defn
+        self.fmt_fields = dict(fmt_fields or {})
+
+    @override
+    def _with_matches(self, matches: Sequence[_M_co]) -> Self:
+        return type(self)(self.path, matches, self.defn, self.fmt_fields, scope=self.scope)
+
+    def __getattr__(self, name: str) -> _XorMatches[_M_co]:
+        # Lookup already failed. A real attribute never reaches here
+        if isinstance(self.defn, DirDefn) and is_union(self.defn.layouts):
+            for layout in self.defn.layouts:
+                if layout.name == name and layout.child_type is not None:
+                    picked = tuple(m for m in self._matches if isinstance(m, layout.child_type))
+                    return _XorMatches(self.path, picked, self._names, scope=self.scope)
+        raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
 
     @overload
     def parse(self: "Matches[FileMatch[_L], File[_L]]", source: PathIsh) -> FixedFile[_L]: ...
@@ -759,12 +791,13 @@ class _BranchTable:
             raise KeyError(key) from None
 
 
+@dataclass(frozen=True, slots=True)
 class _DeclAttr:
+    name: str
+    target: object
+
     # Class access returns the declaration: the schema class, or a view.
     # Instance access returns the bound child. A bare class attribute would hide that lookup.
-    def __init__(self, name: str, target: object) -> None:
-        self.name: str = name
-        self.target: object = target
 
     def __get__(self, instance: FixedDir | None, owner: type[object]) -> object:
         if instance is None:
@@ -791,10 +824,8 @@ def _schema_ctor_install_attrs(cls: type[Schema]) -> None:
             target = member_view(cls, FixedFile, node)
         elif node.name and isinstance(defn, DirDefn):
             # An exact directory's child class is set when the directory is compiled.
-            child_type = defn.layouts[0].child_type if defn.layouts else None
-            if child_type is None:
+            if (target := defn.layouts[0].child_type if defn.layouts else None) is None:
                 raise AssertionError("exact directory has no child class")
-            target = child_type
         elif node.fmt:
             target = member_view(cls, Template, node)
         else:

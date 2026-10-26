@@ -12,7 +12,9 @@ from fs_schema import Dir, Match, MismatchErr, Schema, is_mismatch, raise_mismat
 from fs_schema import _errmsg as em
 from fs_schema._compile import _dir_defn_exn
 from fs_schema._decl import DirDefn, DirLayout
-from fs_schema._schema import _schema_ctor_install_attrs
+from fs_schema._fmt import CaptureMap, path_name_exn, safe_path_exn
+from fs_schema._schema import _schema_ctor_install_attrs, _XorMatches
+from fs_schema._types import Safe
 
 
 class Letter(Schema):
@@ -344,6 +346,57 @@ def test_xor_fast_still_tries_the_next_arm(tmp_path: Path) -> None:
     assert not is_mismatch(bound)
     hit = bound.items[0]
     assert isinstance(hit, Payload)
+
+
+def test_xor_bound_branch_is_those_matches(tmp_path: Path) -> None:
+
+    class Table(Schema):
+        schema = {"rows": "rows.json"}
+
+    class Results(Schema):
+        schema = {
+            Dir(alias="runs", fmt="{n:d}", min=0): xor(note=Letter, row=Table, other=ArmC),
+        }
+
+    _file(tmp_path / "1", "body.txt")
+    _file(tmp_path / "2", "rows.json")
+    bound = raise_mismatch(Results.bind(tmp_path))
+    notes = bound.runs.note
+    assert len(notes) == 1
+    assert isinstance(notes[0], Results.runs.note)
+    assert notes.get(-1) is notes[0]
+    assert notes.where(n=1)[0] is notes[0]
+    assert len(notes.where(n=9)) == 0
+    assert isinstance(notes, _XorMatches)
+    assert notes[:1][0] is notes[0]
+    assert notes.get(3, default=None) is None
+    with pytest.raises(KeyError):
+        notes.where(missing=1)
+    notes.scope = CaptureMap({"day": 1})
+    with pytest.raises(KeyError):
+        notes.where(missing=1)
+    with pytest.raises(KeyError):
+        notes.where(day=1)
+    assert notes[0].body.path.name == "body.txt"
+    assert type(notes[0].body.name) is str
+    assert isinstance(path_name_exn(safe_path_exn(notes[0].body.path)), Safe)
+    assert len(bound.runs.row) == 1
+    assert bound.runs.other.get(-1) is None
+    assert Results.runs.note is Letter
+    assert Results.relative_to(tmp_path).runs.format(n=3).note.body.path.name == "body.txt"
+    with pytest.raises(AttributeError):
+        _ = notes.parse(tmp_path)
+    with pytest.raises(AttributeError):
+        _ = notes.format
+    with pytest.raises(AttributeError):
+        _ = bound.runs.nope
+
+
+def test_xor_branch_cannot_hide_a_collection_attribute() -> None:
+    with pytest.raises(TypeError, match="hides a collection attribute"):
+
+        class Hidden(Schema):  # pyright: ignore[reportUnusedClass]
+            schema = {"slot": xor(get=Stamped)}
 
 
 def test_parse_passes_directory_captures_to_the_child(tmp_path: Path) -> None:

@@ -1,4 +1,5 @@
 # pyright: reportImportCycles=false
+import inspect
 import keyword
 import typing
 import warnings
@@ -27,11 +28,22 @@ from ._decl import (
 )
 from ._fmt import REF
 from ._fmt_spec import spec_type_exn
-from ._schema import Schema, SchemaCls
+from ._schema import Schema, SchemaCls, Template
 from ._types import FieldSpecs, Safe
 
 _L = TypeVar("_L")
 _NAME_FMT = Formatter()
+
+
+def _annotation_names(cls: type[object]) -> frozenset[str]:
+    found: set[str] = set()
+    for klass in cls.__mro__:
+        found.update(inspect.get_annotations(klass))
+    return frozenset(found)
+
+
+# Names lookup finds before __getattr__. dir() is the methods. Annotations are the fields.
+_COLLECTION_ATTRS: Final = frozenset(dir(Template)) | _annotation_names(Template)
 INLINE: Final = "_fs_schema_inline"
 CAPTURE_SCOPE: Final = "_fs_schema_capture_scope"
 
@@ -212,6 +224,9 @@ def _dir_defn_exn(
             item = _compile_inline_schema_exn(class_name, module, origin, item, child_scope, part=index)
         if not is_schema_type(item):
             raise _invalid_schema(class_name, em.Schema.Body.schema_or_dict(key, item))
+        # __getattr__ never runs for a name the collection already has
+        if name is not None and name in _COLLECTION_ATTRS:
+            raise _invalid_schema(class_name, em.Xor.hidden(name))
         layouts.append(_layout_from_schema_exn(class_name, key, node, item, name=name))
     if warn:
         for clash in sorted(unnamed_clashes(layouts)):

@@ -14,6 +14,8 @@ Python 3.15. `%d` without a year needs parse 1.22.4.
 
 `parse` on a formatted directory feeds that name's captures to the child, same as `format`.
 
+A bound xor collection's branch is that branch's matches. `get` reads one. `format` and `parse` stay on the collection.
+
 `xor(...)` is an exclusive union. One branch binds, first success.
 Unnamed branches promote their children onto the xor. A keyword keeps them behind that branch.
 Create through a child or a branch. Bind returns the winning schema.

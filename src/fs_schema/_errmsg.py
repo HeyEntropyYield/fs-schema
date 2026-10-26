@@ -186,6 +186,10 @@ class Xor:
     def clash(name: str) -> str:
         return _fix(f"xor branches disagree on {name!r}", "use an index or a branch name")
 
+    @staticmethod
+    def hidden(name: str) -> str:
+        return _fix(f"xor branch {name!r} hides a collection attribute", "rename the branch")
+
 
 class Fmt:
     """Basename format and match."""

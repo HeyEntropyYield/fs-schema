@@ -49,3 +49,17 @@ def check(box_path: Path) -> None:
         assert_type(missing, fss.MismatchErr)
     else:
         assert_type(missing, Box)
+
+    class Note(fss.Schema):
+        schema = {"body": "body.txt"}
+
+    class Results(fss.Schema):
+        schema = {fss.Dir(alias="runs", fmt="{n:d}", min=0): fss.xor(note=Note)}
+
+    trained = Results.bind(box_path)
+    if not isinstance(trained, Results):
+        return
+    notes = trained.runs.note
+    assert_type(notes.get(-1), _schema._ChildView | None)
+    assert_type(notes[0], _schema._ChildView)
+    assert_type(len(notes), int)
