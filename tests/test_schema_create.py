@@ -31,7 +31,7 @@ class Delivery(Schema):
 
 
 class Export(Schema):
-    schema = {"jetson": File(fmt="end2end_jetson.onnx", min=0, max=1)}
+    schema = {"stamp": File(fmt="stamp.json", min=0, max=1)}
 
 
 def test_captures_named_matches_a_dict_pair(tmp_path: Path) -> None:
@@ -116,13 +116,13 @@ def test_none_omits_an_optional(tmp_path: Path) -> None:
 
 def test_captureless_collection_create_returns_the_file(tmp_path: Path) -> None:
     fs = Export.relative_to(tmp_path)
-    _ = fs.jetson.format().create(b"onnx")
+    _ = fs.stamp.format().create(b"{}")
     bare = Export.relative_to(tmp_path / "bare")
-    bare.create(jetson=b"onnx")
+    bare.create(stamp=b"{}")
     bound = fs.bind()
     assert type(bound) is Export
-    assert bound.jetson[0].read_bytes() == b"onnx"
-    assert (tmp_path / "bare" / "end2end_jetson.onnx").read_bytes() == b"onnx"
+    assert bound.stamp[0].read_bytes() == b"{}"
+    assert (tmp_path / "bare" / "stamp.json").read_bytes() == b"{}"
 
 
 class _Inner(Schema):

@@ -35,13 +35,13 @@ def test_name_and_match_are_valid_while_name_and_fmt_are_not() -> None:
 
 
 def test_schema_keyword_is_the_schema_dict(tmp_path: Path) -> None:
-    class Box(_schema.Schema, schema={"end2end": "end2end.onnx"}):
+    class Box(_schema.Schema, schema={"manifest": "manifest.json"}):
         pass
 
-    (tmp_path / "end2end.onnx").write_bytes(b"x")
+    (tmp_path / "manifest.json").write_bytes(b"x")
     bound = Box.bind(tmp_path)
     assert isinstance(bound, Box)
-    assert bound.end2end.path.name == "end2end.onnx"
+    assert bound.manifest.path.name == "manifest.json"
 
     with pytest.raises(TypeError, match="cannot set schema twice"):
 

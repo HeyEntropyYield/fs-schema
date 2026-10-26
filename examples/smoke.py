@@ -14,7 +14,7 @@ import fs_schema as fss
 
 class Box(fss.Schema):
     schema = {
-        "required": "required.txt",
+        "manifest": "manifest.json",
         "items": fss.File(fmt="item-{number:d}.txt", min=0),
     }
 
@@ -22,10 +22,10 @@ class Box(fss.Schema):
 def main() -> None:
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
-        fss.put(root / "required.txt", "required")
+        fss.put(root / "manifest.json", "manifest")
         fss.put(root / "item-2.txt", "item")
         bound = fss.raise_mismatch(Box.bind(root))
-        assert bound.required.read_text() == "required"
+        assert bound.manifest.read_text() == "manifest"
         assert bound.items[0].kwargs.number == 2
         fs = Box.relative_to(root / "new")
         fs.items.format(number=3).create("planned")

@@ -140,22 +140,22 @@ Use this when one directory is several results, or several stages, and each resu
 `optional=True` skips that schema when it does not match. The directory is still there.
 
 ```python
-class Notes(fss.Schema):
+class Letter(fss.Schema):
     schema = {"body": "body.txt"}
 
 
-class Metrics(fss.Schema):
-    schema = {"score": "score.json"}
+class Table(fss.Schema):
+    schema = {"rows": "rows.json"}
 
 
-class Work(fss.Schema):
+class Bundle(fss.Schema):
     schema = {
-        fss.Dir(".", alias="notes"): Notes,
-        fss.Dir(".", alias="metrics"): Metrics,
+        fss.Dir(".", alias="letter"): Letter,
+        fss.Dir(".", alias="table"): Table,
     }
 ```
 
-`work.notes` is a `Notes`. Pass that where a `Notes` is required. `fmt` and `match` do not belong on this form. An alias is required.
+`bundle.letter` is a `Letter`. Pass that where a `Letter` is required. `fmt` and `match` do not belong on this form. An alias is required.
 
 ### Declaration API
 

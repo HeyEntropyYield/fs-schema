@@ -175,28 +175,28 @@ def test_empty_alias_and_match_only_declarations_are_anonymous() -> None:
 
 def test_dir_schema_is_a_class_time_structural_requirement() -> None:
     class RequiredBase(Schema):
-        schema = {"required": "required.txt", "nested": {"leaf": "leaf.txt"}}
+        schema = {"note": "note.txt", "nested": {"leaf": "leaf.txt"}}
 
     class Required(RequiredBase):
         pass
 
     class Independent(Schema):
         schema = {
-            "required": "required.txt",
-            "nested": {"leaf": "leaf.txt", "extra_nested": "extra-nested.txt"},
+            "note": "note.txt",
+            "nested": {"leaf": "leaf.txt", "extra_nested": "keep.txt"},
             "extra": "extra.txt",
         }
 
     class ViaInheritance(Independent):
-        schema = {"more": "more.txt"}
+        schema = {"flip": "flip.txt"}
 
     class Accepted(Schema):
         schema = {
             Dir("explicit", schema=Required): Independent,
             Dir("inherited", schema=Required): ViaInheritance,
             Dir("inline", schema=Required): {
-                "required": "required.txt",
-                "nested": {"leaf": "leaf.txt", "extra_nested": "extra-nested.txt"},
+                "note": "note.txt",
+                "nested": {"leaf": "leaf.txt", "extra_nested": "keep.txt"},
             },
         }
 
@@ -209,14 +209,14 @@ def test_dir_schema_is_a_class_time_structural_requirement() -> None:
     "rhs",
     [
         {"nested": {"leaf": "leaf.txt"}},
-        {"required": File("different.txt"), "nested": {"leaf": "leaf.txt"}},
-        {"required": "required.txt", "nested": {}},
-        {"required": "required.txt", Dir("nested", match="nested"): {"leaf": "leaf.txt"}},
+        {"note": File("b.txt"), "nested": {"leaf": "leaf.txt"}},
+        {"note": "note.txt", "nested": {}},
+        {"note": "note.txt", Dir("nested", match="nested"): {"leaf": "leaf.txt"}},
     ],
 )
 def test_dir_schema_rejects_missing_or_unequal_required_declarations(rhs: object) -> None:
     class Required(Schema):
-        schema = {"required": "required.txt", "nested": {"leaf": "leaf.txt"}}
+        schema = {"note": "note.txt", "nested": {"leaf": "leaf.txt"}}
 
     with pytest.raises(TypeError, match=r"Invalid[.]schema declaration .* RHS does not satisfy Dir[.]schema"):
         _define({Dir("candidate", schema=Required): rhs})
@@ -235,10 +235,10 @@ def test_dir_schema_preserves_anonymous_requirement_multiplicity() -> None:
 
 def test_dir_schema_accepts_recursive_anonymous_requirements_with_extra_children() -> None:
     class Required(Schema):
-        schema = {Dir(match=r"item-.+"): {"leaf": "leaf.txt"}}
+        schema = {Dir(match=r"part-.+"): {"leaf": "leaf.txt"}}
 
     class Candidate(Schema):
-        schema = {Dir(match=r"item-.+"): {"leaf": "leaf.txt", "extra": "extra.txt"}}
+        schema = {Dir(match=r"part-.+"): {"leaf": "leaf.txt", "extra": "extra.txt"}}
 
     class Root(Schema):
         schema = {Dir("candidate", schema=Required): Candidate}
@@ -255,7 +255,7 @@ def test_dir_schema_accepts_recursive_anonymous_requirements_with_extra_children
 
 def test_repeated_class_navigation_is_not_a_reusable_schema_declaration() -> None:
     class Parent(Schema):
-        schema = {Dir(fmt="item-{n:d}", alias="items"): {}}
+        schema = {Dir(fmt="part-{n:d}", alias="items"): {}}
 
     assert issubclass(Parent.items, Template)
     with pytest.raises(TypeError, match=r"Invalid[.]schema invalid entry at key 'reused'"):

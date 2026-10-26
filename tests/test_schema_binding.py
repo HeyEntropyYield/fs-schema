@@ -42,7 +42,7 @@ def test_private_bind_defns_rejects_bad_root_and_propagates_nested_mismatch(tmp_
     assert isinstance(missing, MismatchErr)
     root = tmp_path / "root"
     (root / "nested").mkdir(parents=True)
-    nested = DirDefn(Dir("nested"), (File("required"),))
+    nested = DirDefn(Dir("nested"), (File("note.txt"),))
     mismatch = bind_defns(root, (nested,))
     assert isinstance(mismatch, MismatchErr)
     assert str(mismatch) == f"expected file: {root / 'nested' / 'required'}"
@@ -149,11 +149,11 @@ def test_collection_ignores_wrong_kind_candidates(tmp_path: Path) -> None:
 
 def test_sorting_and_nested_selected_directory_mismatch_propagates(tmp_path: Path) -> None:
     root = tmp_path / "root"
-    _touch(root, "20250102", "20240101", "item-2.txt", "item-1.txt")
-    _touch(root / "run-2", "required")
+    _touch(root, "20250102", "20240101", "part-2.txt", "part-1.txt")
+    _touch(root / "run-2", "note.txt")
     (root / "run-1").mkdir(parents=True)
-    run = DirDefn(Dir(fmt="run-{n:d}", min=2), (File(name="required"),))
-    defns = (File(fmt=dt("%Y%m%d"), min=2), File(fmt="item-{n:d}.txt", min=2, sort=lambda _match: 0), run)
+    run = DirDefn(Dir(fmt="run-{n:d}", min=2), (File(name="note.txt"),))
+    defns = (File(fmt=dt("%Y%m%d"), min=2), File(fmt="part-{n:d}.txt", min=2, sort=lambda _match: 0), run)
 
     mismatch = bind_defns(root, defns)
     assert isinstance(mismatch, MismatchErr)
@@ -167,7 +167,7 @@ def test_sorting_and_nested_selected_directory_mismatch_propagates(tmp_path: Pat
     dates, items = sorted_only
     assert isinstance(dates, Template) and isinstance(items, Template)
     assert [match.kwargs["ts"] for match in dates] == [datetime(2024, 1, 1), datetime(2025, 1, 2)]
-    assert [match.path.name for match in items] == ["item-1.txt", "item-2.txt"]
+    assert [match.path.name for match in items] == ["part-1.txt", "part-2.txt"]
 
 
 def test_bind_reports_every_sibling_failure_in_declaration_order(tmp_path: Path) -> None:
@@ -282,7 +282,7 @@ def test_fast_bind_still_passes_a_skipped_mismatch(tmp_path: Path) -> None:
     class Bundle(Schema):
         schema = {
             "files": File(fmt="{stem}.txt", match=r"ok-.+", skip_mismatch=True, min=0),
-            "need": "need.txt",
+            "note": "note.txt",
         }
 
     root = tmp_path / "root"
@@ -301,9 +301,9 @@ def test_bind_single_failure_is_one_line(tmp_path: Path) -> None:
 def test_bind_reports_count_and_member_failures_in_one_directory(tmp_path: Path) -> None:
     root = tmp_path / "root"
     _touch(root / "run-1", "other")
-    _touch(root / "run-2", "required")
+    _touch(root / "run-2", "note.txt")
     _touch(root, "bad.txt", "part-2.txt")
-    run = DirDefn(Dir(fmt="run-{n:d}", min=2), (File(name="required"),))
+    run = DirDefn(Dir(fmt="run-{n:d}", min=2), (File(name="note.txt"),))
     parts = File(fmt="part-{n:d}.txt", match=r"part-1[.]txt", min=1)
 
     mismatch = bind_defns(root, (run, parts))
@@ -520,19 +520,19 @@ def test_root_kind_validation_including_empty_schemas(tmp_path: Path) -> None:
 
 def test_dir_schema_has_no_runtime_merge_or_second_binding(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     class Required(Schema):
-        schema = {"required": File(match=r"required-.+", min=1)}
+        schema = {"parts": File(match=r"part-.+", min=1)}
 
     class Exposed(Schema):
         schema = {
-            "required": File(match=r"required-.+", min=1),
-            "visible": File(match=r"visible-.+", min=1),
+            "parts": File(match=r"part-.+", min=1),
+            "extra": File(match=r"extra-.+", min=1),
         }
 
     class Root(Schema):
         schema = {Dir("nested", schema=Required): Exposed}
 
     nested = tmp_path / "root" / "nested"
-    _touch(nested, "required-1", "visible-1")
+    _touch(nested, "part-1", "extra-1")
     original = _schema._bind_children
     visited: list[Path] = []
 
@@ -546,7 +546,7 @@ def test_dir_schema_has_no_runtime_merge_or_second_binding(tmp_path: Path, monke
     bound = Root.bind(tmp_path / "root")
     assert isinstance(bound, Root)
     assert type(bound.nested) is Exposed
-    assert hasattr(bound.nested, "required") and hasattr(bound.nested, "visible")
+    assert hasattr(bound.nested, "parts") and hasattr(bound.nested, "extra")
     assert Root.nested is Exposed
     assert visited.count(nested) == 1
 

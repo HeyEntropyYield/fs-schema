@@ -1,4 +1,4 @@
-# DA child-access shapes. basedpyright checks this module; pytest does not call check().
+# Child access shapes. basedpyright checks this module; pytest does not call check().
 # pyright: reportPrivateUsage=false
 from pathlib import Path
 
@@ -11,18 +11,18 @@ from fs_schema import _fmt, _schema
 def check(box_path: Path) -> None:
     class Box(fss.Schema):
         schema = {
-            "end2end": "end2end.onnx",
-            "jetson": fss.File("end2end_jetson.onnx", optional=True),
-            "bins": fss.File(fmt="bin_{slug}.bin", min=0, max=1),
-            "nested": {"train": fss.File("train.json")},
+            "manifest": "manifest.json",
+            "contents": fss.File("contents.json", optional=True),
+            "images": fss.File(fmt="{stem}.png", min=0, max=1),
+            "nested": {"note": fss.File("note.txt")},
         }
 
     class Sorted(fss.Schema):
         schema = {
-            "best": fss.File(
-                fmt="best_{epoch:d}.pth",
+            "parts": fss.File(
+                fmt="part-{part:d}.parquet",
                 min=0,
-                sort=lambda m: m.kwargs["epoch"],
+                sort=lambda m: m.kwargs["part"],
             ),
         }
 
@@ -33,19 +33,19 @@ def check(box_path: Path) -> None:
     if not isinstance(sorted_box, Sorted):
         return
 
-    assert_type(box.end2end, _schema._ChildView)
-    assert_type(fss.exists_opt(box.end2end), Path | None)
-    assert_type(fss.exists_opt(box.jetson), Path | None)
-    assert_type(fss.exists_opt(next(box.bins, None)), Path | None)
-    assert_type(fss.exists_opt(box.bins.get()), Path | None)
-    assert_type(box.bins.format(slug="x").path, Path)
-    assert_type(box.nested.train.path, Path)
-    assert_type([item.name for item in box.bins], list[str])
-    assert_type(len(box.bins), int)
+    assert_type(box.manifest, _schema._ChildView)
+    assert_type(fss.exists_opt(box.manifest), Path | None)
+    assert_type(fss.exists_opt(box.contents), Path | None)
+    assert_type(fss.exists_opt(next(box.images, None)), Path | None)
+    assert_type(fss.exists_opt(box.images.get()), Path | None)
+    assert_type(box.images.format(stem="x").path, Path)
+    assert_type(box.nested.note.path, Path)
+    assert_type([item.name for item in box.images], list[str])
+    assert_type(len(box.images), int)
     planned = Box.relative_to(box)
-    assert_type(planned.bins.format(slug="y").path, Path)
-    assert_type(sorted_box.best[-1].kwargs["epoch"], _fmt.CaptureField)
-    assert_type(box.end2end.load(), object | Exception)
+    assert_type(planned.images.format(stem="y").path, Path)
+    assert_type(sorted_box.parts[-1].kwargs["part"], _fmt.CaptureField)
+    assert_type(box.manifest.load(), object | Exception)
 
     if not (missing := Box.bind(box_path)):
         assert_type(missing, fss.MismatchErr)

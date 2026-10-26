@@ -95,9 +95,9 @@ A helper that loads one file or file match takes `Loadable` and calls `load(Mani
 
 `kwargs` is a mapping from a format name to a value. The name is a string, and it is known when the class is created, not in the type. Values for one name share a type. A different name can be an `int`, a `str`, or a `datetime`. There is no static map from those names to those types.
 
-`m.kwargs["epoch"]` is typed as possibly `None`, because a regex group can be absent. A format field such as `{epoch:d}` is never `None` when the file matches. `format` still wants a value that is not `None`, so check a regex group before you pass it.
+`m.kwargs["part"]` is typed as possibly `None`, because a regex group can be absent. A format field such as `{part:d}` is never `None` when the file matches. `format` still wants a value that is not `None`, so check a regex group before you pass it.
 
-`lambda m: m.kwargs["epoch"]` typechecks either way. But if a `None` key does turn up next to other values, `list.sort` raises `TypeError`. The checker says nothing about this.
+`lambda m: m.kwargs["part"]` typechecks either way. But if a `None` key does turn up next to other values, `list.sort` raises `TypeError`. The checker says nothing about this.
 
 You can annotate the lambda as returning `int`, but that only changes what the checker sees. Sorting still gets the real value, so a real `None` still raises.
 

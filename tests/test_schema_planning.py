@@ -16,8 +16,8 @@ def _decode_number(path: Path) -> int:
 
 
 _DEEP_LAYOUT: Layout = {
-    Dir(fmt="batch-{batch:d}", alias="batches"): {
-        FILES: [File(fmt="part-{part:d}.bin", alias="parts", schema=_decode_number)],
+    Dir(fmt="batch-{n:d}", alias="batches"): {
+        FILES: [File(fmt="part-{part:d}.jsonl", alias="parts", schema=_decode_number)],
     }
 }
 
@@ -25,13 +25,13 @@ _DEEP_LAYOUT: Layout = {
 class _PlannedRoot(Schema):
     schema = {
         FILES: [
-            File(fmt="loose-{number:d}.dat", alias="loose", schema=_decode_number),
+            File(fmt="extra-{n:d}.txt", alias="extra", schema=_decode_number),
             File(match=r"regex-.+", alias="regex_only", min=0),
             File(fmt="{name}", alias="unsafe", min=0),
             File(fmt="{}-{:d}", alias="positional", min=0),
         ],
         "fixed dir": {"child": {"deep": _DEEP_LAYOUT}},
-        Dir(fmt="run-{run:d}", match=r"run-[1-9][0-9]*", alias="runs"): {"child": {"deep": _DEEP_LAYOUT}},
+        Dir(fmt="run-{n:d}", match=r"run-[1-9][0-9]*", alias="runs"): {"child": {"deep": _DEEP_LAYOUT}},
     }
 
 
@@ -106,7 +106,7 @@ def test_planned_tree_is_canonical_path_bearing_and_only_root_can_bind(
     assert all(isinstance(node.path, Path) for node in (plan, *plan, fixed, child, deep, deep.batches))
 
     assert isinstance(plan, SchemaRoot) and hasattr(plan, "bind")
-    for descendant in (plan.loose, plan.regex_only, fixed, child, deep, deep.batches):
+    for descendant in (plan.extra, plan.regex_only, fixed, child, deep, deep.batches):
         assert not isinstance(descendant, SchemaRoot)
         assert not hasattr(descendant, "bind")
     assert not hasattr(fixed, "root")
@@ -115,12 +115,12 @@ def test_planned_tree_is_canonical_path_bearing_and_only_root_can_bind(
 def test_planned_collections_are_empty_until_format_or_bind() -> None:
     plan = _PlannedRoot.relative_to("missing")
 
-    for collection in (plan.loose, plan.runs, plan.regex_only):
+    for collection in (plan.extra, plan.runs, plan.regex_only):
         assert isinstance(collection, Matches)
         assert len(collection) == 0 and tuple(collection) == ()
         with pytest.raises(IndexError):
             _ = collection[0]
-    assert isinstance(plan.loose, Template) and len(plan.loose[:]) == 0
+    assert isinstance(plan.extra, Template) and len(plan.extra[:]) == 0
     assert isinstance(plan.runs, Template)
     assert isinstance(plan.regex_only, Matches) and not isinstance(plan.regex_only, Template)
     assert not hasattr(plan.regex_only, "format")
@@ -133,16 +133,16 @@ def test_formatting_files_and_nested_directories_is_recursive_planning_without_i
     _forbid_filesystem(monkeypatch)
     plan = _PlannedRoot.relative_to(root)
 
-    run = plan.runs.format(run=12)
-    batch = run.child.deep.batches.format(batch=3)
+    run = plan.runs.format(n=12)
+    batch = run.child.deep.batches.format(n=3)
     part = batch.parts.format(part=7)
-    loose = plan.loose.format(number=9)
+    loose = plan.extra.format(n=9)
 
     assert isinstance(run, FixedDir) and run.path == root / "run-12"
     assert run.child.deep.path == root / "run-12" / "child" / "deep"
     assert isinstance(batch, FixedDir) and batch.path == root / "run-12" / "child" / "deep" / "batch-3"
-    assert isinstance(part, FixedFile) and part.path == batch.path / "part-7.bin"
-    assert isinstance(loose, FixedFile) and loose.path == root / "loose-9.dat"
+    assert isinstance(part, FixedFile) and part.path == batch.path / "part-7.jsonl"
+    assert isinstance(loose, FixedFile) and loose.path == root / "extra-9.txt"
     assert part.defn.schema is _decode_number and loose.defn.schema is _decode_number
     assert all(hasattr(part, name) for name in ("read_bytes", "read_text", "load", "create"))
 
@@ -156,15 +156,15 @@ def test_formatting_uses_native_errors_then_regex_and_safe_basename_validation()
     plan = _PlannedRoot.relative_to("missing")
 
     with pytest.raises(KeyError):
-        plan.loose.format()
+        plan.extra.format()
     with pytest.raises(ValueError):
-        plan.loose.format(number="not-an-int")
+        plan.extra.format(n="not-an-int")
     with pytest.raises(IndexError):
         plan.positional.format("name")
     with pytest.raises(ValueError):
         plan.positional.format("name", "not-an-int")
     with pytest.raises(ValueError, match="does not match"):
-        plan.runs.format(run=0)
+        plan.runs.format(n=0)
 
     for unsafe in ("", ".", "..", "../name", "dir/name", r"dir\name", "nul\0name"):
         with pytest.raises(ValueError, match="must be a basename"):
@@ -198,9 +198,9 @@ def test_plan_bind_and_bound_root_are_fresh_exact_top_level_transitions(
 
 def test_stem_number_decoder(tmp_path: Path) -> None:
     class Parts(Schema):
-        schema = {"parts": File(fmt="part-{part:d}.bin", schema=_decode_number, min=0)}
+        schema = {"parts": File(fmt="part-{part:d}.jsonl", schema=_decode_number, min=0)}
 
-    _ = (tmp_path / "part-7.bin").write_bytes(b"")
+    _ = (tmp_path / "part-7.jsonl").write_bytes(b"")
     bound = Parts.bind(tmp_path)
     assert type(bound) is Parts
     assert bound.parts[0].load() == 7
