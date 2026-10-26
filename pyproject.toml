@@ -177,7 +177,11 @@ filterwarnings = [
   # JSON extra. mashumaro's ByteString deprecation, also ignored in _mashumaro_json
   "ignore:.*ByteString.*:DeprecationWarning:mashumaro",
   # dev only. library import path never loads these
-  "ignore:.*invalid escape sequence.*:SyntaxWarning:docopt",
+  # docopt.py still has '\S' and '\['. Compile emits the warning before the module
+  # name exists, so a docopt module filter never matches. 3.10 is DeprecationWarning.
+  # 3.12+ is SyntaxWarning. error turns either into SyntaxError on a fresh pyc
+  "ignore:.*invalid escape sequence.*:DeprecationWarning",
+  "ignore:.*invalid escape sequence.*:SyntaxWarning",
   "ignore:.*use of fork.*:DeprecationWarning:sh",
 ]
 

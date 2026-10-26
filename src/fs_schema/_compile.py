@@ -104,15 +104,15 @@ def _name_format_field(name: str) -> bool:
         return True
 
 
-def _check_node_exn(class_name: str, key: object, node: Node, scope: FieldSpecs, *, warn: bool) -> None:
+def _check_node_exn(cls: type[Schema], key: object, node: Node, scope: FieldSpecs) -> None:
     if _is_dot_dir(node, alias=False):
-        raise _bad(class_name, key, em.Node.DOT_ALIAS)
+        raise _bad(cls.__name__, key, em.Node.DOT_ALIAS)
     if node.alias and (not node.alias.isidentifier() or keyword.iskeyword(node.alias) or node.alias.startswith("_")):
-        raise _bad(class_name, key, em.Schema.Body.ALIAS)
+        raise _bad(cls.__name__, key, em.Schema.Body.ALIAS)
     if isinstance(node, Dir) and node.schema is not None and not is_schema_type(node.schema):
-        raise _bad(class_name, key, em.Schema.Body.DIR_SCHEMA)
-    _check_refs_exn(class_name, key, node, scope)
-    if warn and node.name and _name_format_field(node.name):
+        raise _bad(cls.__name__, key, em.Schema.Body.DIR_SCHEMA)
+    _check_refs_exn(cls.__name__, key, node, scope)
+    if cls.warn and node.name and _name_format_field(node.name):
         warnings.warn(em.Node.NAME_FIELD, UserWarning, stacklevel=2)
 
 
@@ -187,13 +187,13 @@ def _defn_satisfies(actual: Defn, required: Defn) -> bool:
 
 
 def _compile_inline_schema_exn(
-    class_name: str, module: str, position: int, layout: dict[object, object], scope: FieldSpecs, *, part: int | None = None,
+    cls: type[Schema], position: int, layout: dict[object, object], scope: FieldSpecs, *, part: int | None = None,
 ) -> type[Schema]:  # fmt: skip
     label = f"{position}" if part is None else f"{position}_{part}"
     generated = type(
-        f"_{class_name}Child{label}",
+        f"_{cls.__name__}Child{label}",
         (Schema,),
-        {"__module__": module, "schema": layout, INLINE: True, CAPTURE_SCOPE: dict(scope)},
+        {"__module__": cls.__module__, "schema": layout, INLINE: True, CAPTURE_SCOPE: dict(scope)},
     )
     if not is_schema_type(generated):
         raise AssertionError("generated Schema child has an invalid type")
@@ -213,22 +213,22 @@ def _layout_from_schema_exn(
 
 
 def _dir_defn_exn(
-    class_name: str, module: str, key: object, node: Dir[Schema], entries: Sequence[tuple[str | None, object]], scope: FieldSpecs,
-    *, origin: int, warn: bool,
+    cls: type[Schema], key: object, node: Dir[Schema], entries: Sequence[tuple[str | None, object]], scope: FieldSpecs,
+    *, origin: int,
 ) -> DirDefn:  # fmt: skip
     # A sequence is entries of (None, item). xor.entries already carries the branch name
     layouts: list[DirLayout] = []
     child_scope = _extended(scope, node)
     for index, (name, item) in enumerate(entries):
         if _is_raw_mapping(item):
-            item = _compile_inline_schema_exn(class_name, module, origin, item, child_scope, part=index)
+            item = _compile_inline_schema_exn(cls, origin, item, child_scope, part=index)
         if not is_schema_type(item):
-            raise _invalid_schema(class_name, em.Schema.Body.schema_or_dict(key, item))
+            raise _invalid_schema(cls.__name__, em.Schema.Body.schema_or_dict(key, item))
         # __getattr__ never runs for a name the collection already has
         if name is not None and name in _COLLECTION_ATTRS:
-            raise _invalid_schema(class_name, em.Xor.hidden(name))
-        layouts.append(_layout_from_schema_exn(class_name, key, node, item, name=name))
-    if warn:
+            raise _invalid_schema(cls.__name__, em.Xor.hidden(name))
+        layouts.append(_layout_from_schema_exn(cls.__name__, key, node, item, name=name))
+    if cls.warn:
         for clash in sorted(unnamed_clashes(layouts)):
             warnings.warn(em.Xor.clash(clash), UserWarning, stacklevel=2)
     return DirDefn(node, layouts=tuple(layouts))
@@ -259,7 +259,7 @@ def _compile_local_defns_exn(cls: type[Schema], scope: FieldSpecs) -> tuple[Defn
     defns: list[Defn] = []
 
     def add_file_exn(node: File, key: object):
-        _check_node_exn(cls.__name__, key, node, scope, warn=cls.warn)
+        _check_node_exn(cls, key, node, scope)
         defns.append(node)
 
     for key, value in entries.items():
@@ -267,53 +267,43 @@ def _compile_local_defns_exn(cls: type[Schema], scope: FieldSpecs) -> tuple[Defn
             # Normal RHS dicts/dirs
             case str() as name, layout if _is_raw_mapping(layout):
                 node: Dir[Schema] = Dir(name=name)
-                _check_node_exn(cls.__name__, key, node, scope, warn=cls.warn)
-                child_type = _compile_inline_schema_exn(cls.__name__, cls.__module__,
-                    len(defns), layout, _extended(scope, node))  # fmt: skip
-                defns.append(_dir_defn_exn(cls.__name__, cls.__module__, key, node,
-                    ((None, child_type),), _extended(scope, node), origin=len(defns), warn=False))  # fmt: skip
+                _check_node_exn(cls, key, node, scope)
+                child_type = _compile_inline_schema_exn(cls, len(defns), layout, _extended(scope, node))
+                defns.append(_dir_defn_exn(cls, key, node, ((None, child_type),), _extended(scope, node), origin=len(defns)))  # fmt: skip
 
             case Dir() as node, layout if _is_raw_mapping(layout):
-                _check_node_exn(cls.__name__, key, node, scope, warn=cls.warn)
-                child_type = _compile_inline_schema_exn(cls.__name__, cls.__module__,
-                    len(defns), layout, _extended(scope, node))  # fmt: skip
-                defns.append(_dir_defn_exn(cls.__name__, cls.__module__, key, node,
-                    ((None, child_type),), _extended(scope, node), origin=len(defns), warn=False))  # fmt: skip
+                _check_node_exn(cls, key, node, scope)
+                child_type = _compile_inline_schema_exn(cls, len(defns), layout, _extended(scope, node))
+                defns.append(_dir_defn_exn(cls, key, node, ((None, child_type),), _extended(scope, node), origin=len(defns)))  # fmt: skip
 
             # RHS Xor (Seq)
             case Dir() as node, Xor() as rhs:
-                _check_node_exn(cls.__name__, key, node, scope, warn=cls.warn)
-                defns.append(_dir_defn_exn(cls.__name__, cls.__module__, key, node,
-                    rhs.entries, _extended(scope, node), origin=len(defns), warn=cls.warn))  # fmt: skip
+                _check_node_exn(cls, key, node, scope)
+                defns.append(_dir_defn_exn(cls, key, node, rhs.entries, _extended(scope, node), origin=len(defns)))
 
             case str() as name, Xor() as rhs:
                 node = Dir(name=name)
-                _check_node_exn(cls.__name__, key, node, scope, warn=cls.warn)
-                defns.append(_dir_defn_exn(cls.__name__, cls.__module__, key, node,
-                    rhs.entries, _extended(scope, node), origin=len(defns), warn=cls.warn))  # fmt: skip
+                _check_node_exn(cls, key, node, scope)
+                defns.append(_dir_defn_exn(cls, key, node, rhs.entries, _extended(scope, node), origin=len(defns)))
 
             case Dir() as node, rhs if _is_layout_seq(rhs):
-                _check_node_exn(cls.__name__, key, node, scope, warn=cls.warn)
-                defns.append(_dir_defn_exn(cls.__name__, cls.__module__, key, node,
-                    tuple((None, item) for item in rhs), _extended(scope, node), origin=len(defns), warn=False))  # fmt: skip
+                _check_node_exn(cls, key, node, scope)
+                defns.append(_dir_defn_exn(cls, key, node, tuple((None, item) for item in rhs), _extended(scope, node), origin=len(defns)))  # fmt: skip
 
             case str() as name, rhs if _is_layout_seq(rhs):
                 node = Dir(name=name)
-                _check_node_exn(cls.__name__, key, node, scope, warn=cls.warn)
-                defns.append(_dir_defn_exn(cls.__name__, cls.__module__, key, node,
-                    tuple((None, item) for item in rhs), _extended(scope, node), origin=len(defns), warn=False))  # fmt: skip
+                _check_node_exn(cls, key, node, scope)
+                defns.append(_dir_defn_exn(cls, key, node, tuple((None, item) for item in rhs), _extended(scope, node), origin=len(defns)))  # fmt: skip
 
             # Normal RHS Schema
             case str() as name, rhs if is_schema_type(rhs):
                 node = Dir(name=name)
-                _check_node_exn(cls.__name__, key, node, scope, warn=cls.warn)
-                defns.append(_dir_defn_exn(cls.__name__, cls.__module__, key, node,
-                    ((None, rhs),), _extended(scope, node), origin=len(defns), warn=False))  # fmt: skip
+                _check_node_exn(cls, key, node, scope)
+                defns.append(_dir_defn_exn(cls, key, node, ((None, rhs),), _extended(scope, node), origin=len(defns)))
 
             case Dir() as node, rhs if is_schema_type(rhs):
-                _check_node_exn(cls.__name__, key, node, scope, warn=cls.warn)
-                defns.append(_dir_defn_exn(cls.__name__, cls.__module__, key, node,
-                    ((None, rhs),), _extended(scope, node), origin=len(defns), warn=False))  # fmt: skip
+                _check_node_exn(cls, key, node, scope)
+                defns.append(_dir_defn_exn(cls, key, node, ((None, rhs),), _extended(scope, node), origin=len(defns)))
 
             # Normal files
             case str() as alias, str() as name:
@@ -343,6 +333,8 @@ def _compile_local_defns_exn(cls: type[Schema], scope: FieldSpecs) -> tuple[Defn
     return tuple(defns)
 
 
+# Public annotations on Schema. A subclass may set these. Methods stay protected
+_SCHEMA_ATTRS: Final = frozenset(name for name in Schema.__annotations__ if not name.startswith("_"))
 _CAPTURE_MEMBERS: Final = frozenset(("args", "kwargs"))
 _UNSAFE_SCHEMA_DUNDERS: Final = frozenset(
     "RootT __delattr__ __fspath__ __getattr__ __getattribute__ __getitem__ __init__ __init_subclass__ "
@@ -362,12 +354,13 @@ def schema_ctor_check_class(cls: type[Schema]) -> Exception | None:
 
     inherited_members = {
         name for ancestor in cls.__mro__[1:] for name in ancestor.__dict__ if not name.startswith("__")
-    } - {"schema", "warn"}
+    } - _SCHEMA_ATTRS
     if unsafe := cls.__dict__.keys() & (inherited_members | _CAPTURE_MEMBERS | _UNSAFE_SCHEMA_DUNDERS):
         return TypeError(em.Schema.override(cls.__name__, sorted(unsafe)[0]))
     return None
 
 
+# This is the main fn schema calls to compile everything, on subclass init
 def schema_ctor_compile_defn(cls: type[Schema]) -> Exception | None:
     base = cls.__bases__[0]
     if not is_schema_type(base):
