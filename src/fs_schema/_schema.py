@@ -70,6 +70,7 @@ from ._types import (
     Puttable,
     Raw,
     SafePath,
+    UnboundRefs,
 )
 
 
@@ -715,8 +716,10 @@ def _root_bound(body: DirLayout) -> OneDefn:
 
 class Schema(FixedDir, metaclass=SchemaCls):
     schema: ClassVar["Layout"] = {}
-    warn: ClassVar[bool] = True
+    warn: ClassVar[bool] = True  # Emit warnings on footguns
+    capture_refs: ClassVar[bool] = False  # Unbound refs are OK, required in calling Schema
     _schema_defn: ClassVar[DirLayout] = DirLayout()
+    _unbound_refs: ClassVar[UnboundRefs] = {}
 
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()

@@ -1,4 +1,4 @@
-# pyright: reportImportCycles=false
+# pyright: reportImportCycles=false, reportPrivateUsage=false
 import inspect
 import keyword
 import typing
@@ -79,19 +79,26 @@ def _extended(scope: FieldSpecs, node: Node) -> FieldSpecs:
     return {**scope, **specs}
 
 
-def _check_refs_exn(class_name: str, key: object, node: Node, scope: FieldSpecs) -> None:
+def _check_assign_ref_exn(cls: type[Schema], key: object, name: str, spec: str | None, scope: FieldSpecs) -> None:
+    # Same rule for a node's own ref and for a child schema's unbound refs
+    if name not in scope:
+        if cls.capture_refs:
+            cls._unbound_refs[name] = spec
+            return
+        raise _bad(cls.__name__, key, em.Schema.Body.unbound(name))
+    # "" is a field_spec. None means no override
+    if spec is not None and spec_type_exn(spec) is not spec_type_exn(scope[name]):
+        raise _bad(cls.__name__, key, em.Schema.Body.spec(name))
+
+
+def _check_refs_exn(cls: type[Schema], key: object, node: Node, scope: FieldSpecs) -> None:
     # Name is ancestor-only. Fmt also sees this node's fields
     for text, seen in ((node.name, scope), (node.fmt, {**scope, **node.selector.field_specs()})):
         # Safe already applied /< . The result may contain a literal <
         if not text or isinstance(text, Safe):
             continue
         for match in REF.finditer(text):
-            field_name, field_spec = match.group(1), match.group(2)
-            if field_name not in seen:
-                raise _bad(class_name, key, em.Schema.Body.unbound(field_name))
-            # "" is a field_spec. None means no override
-            if field_spec is not None and spec_type_exn(field_spec) is not spec_type_exn(seen[field_name]):
-                raise _bad(class_name, key, em.Schema.Body.spec(field_name))
+            _check_assign_ref_exn(cls, key, match.group(1), match.group(2), seen)
 
 
 def _name_format_field(name: str) -> bool:
@@ -111,7 +118,7 @@ def _check_node_exn(cls: type[Schema], key: object, node: Node, scope: FieldSpec
         raise _bad(cls.__name__, key, em.Schema.Body.ALIAS)
     if isinstance(node, Dir) and node.schema is not None and not is_schema_type(node.schema):
         raise _bad(cls.__name__, key, em.Schema.Body.DIR_SCHEMA)
-    _check_refs_exn(cls.__name__, key, node, scope)
+    _check_refs_exn(cls, key, node, scope)
     if cls.warn and node.name and _name_format_field(node.name):
         warnings.warn(em.Node.NAME_FIELD, UserWarning, stacklevel=2)
 
@@ -228,6 +235,8 @@ def _dir_defn_exn(
         if name is not None and name in _COLLECTION_ATTRS:
             raise _invalid_schema(cls.__name__, em.Xor.hidden(name))
         layouts.append(_layout_from_schema_exn(cls.__name__, key, node, item, name=name))
+        for ref_name, ref_spec in item._unbound_refs.items():
+            _check_assign_ref_exn(cls, key, ref_name, ref_spec, child_scope)
     if cls.warn:
         for clash in sorted(unnamed_clashes(layouts)):
             warnings.warn(em.Xor.clash(clash), UserWarning, stacklevel=2)
@@ -366,11 +375,15 @@ def schema_ctor_compile_defn(cls: type[Schema]) -> Exception | None:
     if not is_schema_type(base):
         raise AssertionError("validated Schema class lost its Schema base")
     try:  # DirDefn can raise ValueError
+        cls._unbound_refs = {}
         raw_scope = vars(cls).get(CAPTURE_SCOPE)
         scope: FieldSpecs = typing.cast(dict[str, str], raw_scope) if isinstance(raw_scope, dict) else {}
         local_defns = _compile_local_defns_exn(cls, scope)  # Uses File/Dir (Node), which fails fast
         _ = DirLayout(local_defns)
         defns = _merge_defns_exn(schema_defn_for(base).defns, local_defns)
+        # Inherited defs are not compiled again. Their owed refs use the same rule
+        for ref_name, ref_spec in base._unbound_refs.items():
+            _check_assign_ref_exn(cls, cls.__name__, ref_name, ref_spec, scope)
         type.__setattr__(cls, "_schema_defn", DirLayout(defns))
     except TypeError as error:
         return error

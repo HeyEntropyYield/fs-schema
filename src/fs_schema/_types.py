@@ -53,6 +53,8 @@ FmtFieldT: TypeAlias = str | int | datetime
 FmtFields: TypeAlias = Mapping[str, FmtFieldT]
 # field_name -> field_spec. field_spec is the text after {field_name:}, or ""
 FieldSpecs: TypeAlias = dict[str, str]
+# field_name -> field_spec
+UnboundRefs: TypeAlias = dict[str, str | None]
 
 Json: TypeAlias = dict[str, "Json"] | list["Json"] | str | int | float | bool | None
 JsonRo: TypeAlias = Mapping[str, "JsonRo"] | Sequence["JsonRo"] | str | int | float | bool | None

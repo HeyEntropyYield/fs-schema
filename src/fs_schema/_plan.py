@@ -19,9 +19,8 @@ _L = TypeVar("_L")
 
 
 def layout_scope(layout: DirLayout, scope: CaptureMap | None) -> CaptureMap | None:
-    # A named schema class does not see the caller's captures. An inline dict does
-    child_type = layout.child_type
-    if child_type is not None and vars(child_type).get(INLINE) is not True:
+    # Inline dicts see the caller. capture_refs is the named class that does too
+    if layout.child_type and not vars(layout.child_type).get(INLINE) and not layout.child_type.capture_refs:
         return None
     return scope
 
